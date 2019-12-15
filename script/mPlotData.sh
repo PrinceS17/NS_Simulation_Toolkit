@@ -32,7 +32,7 @@ StaFolder="MboxStatistics"
 FigFolder="MboxFig"
 range=""
 xtic=5
-NS3PATH='$(pwd)/../BBR_test/ns-3.27'
+NS3PATH="$(pwd)/../BBR_test/ns-3.27"
 
 # parse input option
 while getopts f:d:n:m:p:r:s:o:x:h option        # ':' to give an argument after an option!
