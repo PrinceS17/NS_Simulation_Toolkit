@@ -52,6 +52,13 @@ Then ns-3 is ready to use. One example of typical brite simulation commands is:
 ```
 which generates 2 normal flows, 0 main cross traffic, 2 downstream cross traffic for each with mid 9563 (run id) and Brite topology specified in ```brite_conf/TD_inter=1G_intra=100M_Waxman.conf```. Check the program arguments for more detail.
 
+You can use ```--visualize``` option when running waf to show the topology created by BRITE and visualize the simulated traffic (which I find quite useful!). The example is:
+```
+./waf --run "scratch/brite-for-all -nNormal=1 -nCross=0 -edgeRate=100 -nDsForEach=2 -mid=9563 -confFile=brite_conf/TD_inter=1G_intra=1G_Waxman.conf" --visualize
+```
+
+Note that the topology won't change if you don't change the tid and configure file of BRITE. If you want to randomly generated the topology with the same BRITE configuration, you can run with different tid.
+
 ## Data Generation and Visualization
 The ns-3 program generates raw data in ```BBR_test/ns-3.27/MboxStatistics```. The general form of the name is ```[data type]_[mid]_[flow No.].dat```, e.g. ```DataRate_9563_0.dat``` (data rate of flow 0 in run 9563). To plot a certain raw data, use the following commands:
 ```
