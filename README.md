@@ -2,7 +2,7 @@
 This repo is used to manage the ns-3 simulation and data generation. It can be used to quickly install and configure ns-3, install BRITE topology generator, start multiple simulation runs, and collect and visualize the data (data rate, RTT, LLR, etc).
 
 ## Usage
-After clone the repo, run
+After cloning the repo, run
 
 ```
 ./install.sh
