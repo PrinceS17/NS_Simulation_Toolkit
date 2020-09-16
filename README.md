@@ -1,6 +1,15 @@
 ## NS Simulation Toolkit
 This repo is used to manage the ns-3 simulation and data generation. It can be used to quickly install and configure ns-3, install BRITE topology generator, start multiple simulation runs, and collect and visualize the data (data rate, RTT, LLR, etc).
 
+## Prerequisite
+Tested on Ubuntu 16.04, the following packages are needed: `make`, and `hg`. Besides, please make sure you install the dependencies of PyViz listed [here](https://www.nsnam.org/wiki/PyViz) to enable PyViz visualizer.
+
+```
+sudo apt-get install make hg
+sudo apt-get install python-dev python-pygraphviz python-kiwi python-pygoocanvas \
+                     python-gnome2 python-gnomedesktop python-rsvg
+```
+
 ## Usage
 After cloning the repo, run
 
@@ -80,14 +89,32 @@ python3 multiRun.py -nNormal 3:1:5 -nCross 0:3:3
 which will run the simulations with nNormal 3, 4, 5 and nCross = 0, 3, i.e. 6 runs. Data (only AckLatency and RttLlr), figures (of data rate) and logs are collected in ```BBR_test/ns-3.27/results_[current-time]```. 
 
 ## Troubleshooting
-1. Multiple exit
+1. Brite error
+```
+./scratch/brite-for-all.cc:48:10: fatal error: ns3/brite-module.h: No such file or directory
+```
+It indicates Brite is not installed correctly. Please make sure you have hg and make installed and run
+```
+hg clone http://code.nsnam.org/jpelkey3/BRITE
+cd BRITE
+make
+```
+Make sure there's `libbrite.so` in your BRITE folder, and then you can configure and build ns-3.
+
+2. PyViz not enabled
+```
+assert failed. cond="uid != 0", msg="Assert in TypeId::LookupByName: ns3:VisualSimulatorImpl not found", file=../src/core/model/type-id.cc, line=827
+```
+It indicates PyViz is not enabled and please make sure you have all the PyViz dependencies installed and reconfigure ns-3.
+
+3. Multiple exit
 
 ```
 assert failed. cond="m_ecmpRootExits.size () <= 1", msg="Assumed there is at most one exit from the root to this vertex", file=../src/internet/model/global-route-manager-impl.cc, line=316
 ```
 This will sometimes happen and you can change ```tid``` to get another random topology to get it work.
 
-2. Insufficient leaves
+4. Insufficient leaves
 
 ```
 assert failed. cond="bth.GetNLeafNodesForAs (i) >= nNormal + nCross", msg="-> AS 0 doesn't have enough leaves, please change configure file!", file=../scratch/brite-for-all.cc, line=122
@@ -98,3 +125,5 @@ It happens when the number of leaves generated is less than the number of flows 
 \[1\] NS-3: a Discrete-Event Network Simulator. http://www.nsnam.org/, Accessed in 2019.
 
 \[2\] Medina, A., Lakhina, A., Matta, I., & Byers, J. (2001, August). BRITE: An approach to universal topology generation. In MASCOTS 2001, Proceedings Ninth International Symposium on Modeling, Analysis and Simulation of Computer and Telecommunication Systems (pp. 346-353). IEEE.
+
+\[3\] PyViz - Nsnam. https://www.nsnam.org/wiki/PyViz, Accessed on 2020.
