@@ -10,6 +10,8 @@ sudo apt-get install python-dev python-pygraphviz python-kiwi python-pygoocanvas
                      python-gnome2 python-gnomedesktop python-rsvg
 ```
 
+Note that different Ubuntu version might not provide the python packages above.
+
 ## Usage
 After cloning the repo, run
 
