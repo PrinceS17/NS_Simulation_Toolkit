@@ -1,5 +1,7 @@
 from matplotlib import pyplot as plt
 import os, sys, time, random
+import pandas as pd
+import seaborn as sns
 
 is_test = False
 
@@ -10,7 +12,8 @@ class MultiRun_Module:
         self.path = ''       # path of current processing
         self.res_path = ''   # path of results: figs and logs
         self.scpt_path = ''  # path of script containing mPlotData.sh
-        self.program = 'brite-for-all' # program name that we want to run
+        # self.program = 'brite-for-all' # program name that we want to run
+        self.program = 'brite-for-cbtnk'
         self.mid = random.randint(11, 999)         # unique mid for each run
         self.params = []     # list of parameters of mrun
         self.ranges = []     # list of tuples (min, max, step) corresponding to params above
@@ -91,6 +94,7 @@ class MultiRun_Module:
         command += '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
 
         if not is_test:
+            print(f'  - Running: {command}')
             os.system(command)
 
         print(run_id, ' -> Run', self.mid)
@@ -121,7 +125,31 @@ class MultiRun_Module:
             value.append(th1 + i * step)
             self.dfs(index + 1, value, flag)
             value.pop()
-        
+
+    def plot_all(self):
+        for id, mid in self.run_map.items():
+            csv = f'MboxStatistics/all-data_{mid}.csv'
+            df = pd.read_csv(csv, index_col=False)
+            for field in df.columns:
+                if field in ['time', 'flow']:
+                    continue
+                plt.figure()
+                sns.lineplot(x='time', y=field, hue='flow', data=df)
+                plt.savefig(os.path.join(self.res_path, 'figs', f'{id}_{field}_{mid}.pdf'))
+                plt.close()
+    
+    def collect_all(self):
+        # os.chdir(os.path.join(self.res_path, 'dats'))
+        for id, mid in self.run_map.items():
+            subdir = 'mid=' + str(mid) + '_' + id
+            if self.mark_on:
+                cmark = 'Co' if self.co_map[id] else 'NonCo'
+                subdir = cmark + '_mid=' + str(mid) + '_' + id
+            csv = f'MboxStatistics/all-data_{mid}.csv'
+
+            fdir = os.path.join(self.res_path, 'dats', subdir)
+            os.mkdir(fdir)
+            os.system(f'cp {csv} {fdir}')
 
     def visualize(self, run_id):
         ''' Draw the result data rates given run_id, return mid for reference. '''
@@ -145,11 +173,13 @@ class MultiRun_Module:
         return mid, command
 
     def show_all(self):
+        # deprecating
         ''' Draw all the result using run_map and put into figs directory. '''
         for id in self.run_map:
             self.visualize(id)
     
-    def collect_all(self):
+    def collect_all_old(self):
+        # deprecating
         ''' Collect all the RTT and LLR data. '''
         os.chdir(os.path.join(self.res_path, 'dats'))
         for id in self.run_map:
@@ -253,10 +283,12 @@ def main():
     print(' -- Parsing complete. Start scanning ...')
     mr.scan_all()
     print(' -- Scanning comoplete. Start generating figures ...')
-    mr.show_all()
-    print(' -- All figures stored ...')
+    mr.plot_all()
+
+    # mr.show_all()
+    # print(' -- All figures stored ...')
     mr.collect_all()
-    print(' -- All Rtt & Llr data collected.')
+    print(' -- All data collected.')
 
 
 # Note: script will overwrite the data fileg

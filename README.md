@@ -104,10 +104,21 @@ make
 Make sure there's `libbrite.so` in your BRITE folder, and then you can configure and build ns-3.
 
 2. PyViz not enabled
+2.1
 ```
 assert failed. cond="uid != 0", msg="Assert in TypeId::LookupByName: ns3:VisualSimulatorImpl not found", file=../src/core/model/type-id.cc, line=827
 ```
 It indicates PyViz is not enabled and please make sure you have all the PyViz dependencies installed and reconfigure ns-3.
+
+2.2 
+I already have the requirement installed, but still
+```
+PyViz visualizer              : not enabled (Missing python modules: gtk, goocanvas, pygraphviz)
+```
+
+Please double check the Python version scanned by `./waf configure`, and ensure the prerequiste packeges can be imported for the specific version of python.
+Current PyViz is only tested for python2.7
+
 
 3. Multiple exit
 
