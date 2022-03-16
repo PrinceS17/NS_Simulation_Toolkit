@@ -126,10 +126,12 @@ class MultiRun_Module:
             self.dfs(index + 1, value, flag)
             value.pop()
 
-    def plot_all(self):
+    def plot_all(self, show_flow=None):
         for id, mid in self.run_map.items():
             csv = f'MboxStatistics/all-data_{mid}.csv'
             df = pd.read_csv(csv, index_col=False)
+            if show_flow:
+                df = df[df.flow < show_flow]
             for field in df.columns:
                 if field in ['time', 'flow']:
                     continue
@@ -139,17 +141,16 @@ class MultiRun_Module:
                 plt.close()
     
     def collect_all(self):
-        # os.chdir(os.path.join(self.res_path, 'dats'))
         for id, mid in self.run_map.items():
-            subdir = 'mid=' + str(mid) + '_' + id
             if self.mark_on:
                 cmark = 'Co' if self.co_map[id] else 'NonCo'
-                subdir = cmark + '_mid=' + str(mid) + '_' + id
             csv = f'MboxStatistics/all-data_{mid}.csv'
 
-            fdir = os.path.join(self.res_path, 'dats', subdir)
-            os.mkdir(fdir)
+            fdir = os.path.join(self.res_path, 'dats')
             os.system(f'cp {csv} {fdir}')
+            with open(os.path.join(fdir, 'content.txt'), 'a+') as f:
+                csv1 = f'all-data_{mid}.csv'
+                f.write(f'{id},{cmark},{csv1}\n')
 
     def visualize(self, run_id):
         ''' Draw the result data rates given run_id, return mid for reference. '''
@@ -275,6 +276,7 @@ def test_root():
 
 
 def main():
+    # TODO: hack of the # flow to plot for now
     ''' Logical using order of the external API of the class. '''
     # mr = MultiRun_Module()
     # folder = os.path.join('/home', 'sapphire', 'Documents', 'ns3_BBR', 'ns-3.27')
@@ -283,7 +285,7 @@ def main():
     print(' -- Parsing complete. Start scanning ...')
     mr.scan_all()
     print(' -- Scanning comoplete. Start generating figures ...')
-    mr.plot_all()
+    mr.plot_all(2)
 
     # mr.show_all()
     # print(' -- All figures stored ...')
@@ -291,7 +293,7 @@ def main():
     print(' -- All data collected.')
 
 
-# Note: script will overwrite the data fileg
+# Note: script will overwrite the data file
 if __name__ == "__main__":
     is_test = False     # test mode will disable the mrun command
 

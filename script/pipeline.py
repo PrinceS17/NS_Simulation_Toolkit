@@ -96,11 +96,24 @@ class Pipeline:
         ax = sns.barplot(x='interval', y='score', hue='signal', data=res)
         ax.set_title(f'Score vs intervals w/ signal, corr = {corr}')
         self.show_or_save(f'score_vs_interval_w_signal_{self.tag}.png')
+    
+    def plot_flows(self, show_flow=None):
+        df = self.df[self.df.flow < show_flow] if show_flow else self.df
+        for field in df.columns:
+            if field in ['time', 'flow']:
+                continue
+            plt.close()
+            sns.lineplot(x='time', y=field, hue='flow', data=df)
+            self.show_or_save(f'flow_{field}_{self.tag}.pdf')
+
 
 
 for tag in ['33', '34']:
     ppl =Pipeline(f'all-data_{tag}.csv', f'test-{tag}', show=False)
-    ppl.plot_score_vs_signal_w_func(0, 1)
+    # ppl.plot_score_vs_signal_w_func(0, 1)
+    ppl.plot_flows(2)
+
+
 
 # for func in ['linear', 'rank', 'mut_info']:
 #     ppl.plot_score_vs_intervals_w_signal(0, 1, [0.02, 0.1], func)
