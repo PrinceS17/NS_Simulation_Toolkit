@@ -1,4 +1,5 @@
 import os
+import sys
 from matplotlib import pyplot as plt
 import subprocess as sp
 import pandas as pd
@@ -97,23 +98,25 @@ class Pipeline:
         ax.set_title(f'Score vs intervals w/ signal, corr = {corr}')
         self.show_or_save(f'score_vs_interval_w_signal_{self.tag}.png')
     
-    def plot_flows(self, show_flow=None):
+    def plot_flows(self, show_flow=None, fields=None, figsize=(9,3)):
         df = self.df[self.df.flow < show_flow] if show_flow else self.df
-        for field in df.columns:
+        fields = fields if fields else df.columns
+        n_col = len(fields)
+        fig, ax = plt.subplots(1, n_col, figsize=figsize)
+        for i, field in enumerate(fields):
             if field in ['time', 'flow']:
                 continue
-            plt.close()
-            sns.lineplot(x='time', y=field, hue='flow', data=df)
-            self.show_or_save(f'flow_{field}_{self.tag}.pdf')
+            sns.lineplot(x='time', y=field, hue='flow', data=df, ax=ax[i])
+        plt.tight_layout()
+        self.show_or_save(f'flow_{field}_{self.tag}.pdf')
+        plt.close(fig)
 
 
+if __name__ == '__main__':
+    for tag in sys.argv[1:]:
+        ppl =Pipeline(f'all-data_{tag}.csv', f'test-{tag}', show=False)
+        ppl.plot_score_vs_signal_w_func(0, 1)
+        # ppl.plot_flows(4)
 
-for tag in ['33', '34']:
-    ppl =Pipeline(f'all-data_{tag}.csv', f'test-{tag}', show=False)
-    # ppl.plot_score_vs_signal_w_func(0, 1)
-    ppl.plot_flows(2)
-
-
-
-# for func in ['linear', 'rank', 'mut_info']:
-#     ppl.plot_score_vs_intervals_w_signal(0, 1, [0.02, 0.1], func)
+    # for func in ['linear', 'rank', 'mut_info']:
+    #     ppl.plot_score_vs_intervals_w_signal(0, 1, [0.02, 0.1], func)
