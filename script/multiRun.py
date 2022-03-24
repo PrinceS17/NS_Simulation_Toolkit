@@ -1,5 +1,7 @@
+from concurrent.futures import thread
 from matplotlib import pyplot as plt
-import os, sys, time, random
+import math, os, sys, time, random
+from threading import Thread
 import pandas as pd
 import seaborn as sns
 
@@ -22,6 +24,8 @@ class MultiRun_Module:
         self.cross_on = False           # switch of drawing the cross traffic
         self.mark_on = False            # switch of mark Co/NonCo for each run
         self.change_dat_name = False    # if change dat name with run ID
+        self.n_thread = 1
+        self.threads = []
 
         root = os.getcwd()
         root = root[:root.find ('Toolkit') + 7]
@@ -58,6 +62,8 @@ class MultiRun_Module:
             elif arg == '-program':
                 read_program = True
                 continue
+            elif '-j' in arg:
+                self.n_thread = int(arg[2:])
             elif read_program:
                 self.program = arg
                 read_program = False
@@ -82,6 +88,10 @@ class MultiRun_Module:
         self.co_map[run_id] = True if has_co == 'y' else False
         return has_co
 
+    def run_cmd(self, cmd):
+        ''' Mainly for threading.'''
+        os.system(cmd)
+
     def execute(self, name, value):
         ''' Execute a parameter given its name and range in the form of (min, max, step). '''
         val_str = [str(val) for val in value]
@@ -94,21 +104,37 @@ class MultiRun_Module:
         command += '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
 
         if not is_test:
-            print(f'  - Running: {command}')
-            os.system(command)
+            print(f'  - Thread {len(self.threads)}: {command}')
+            # os.system(command)
+            t = Thread(target=self.run_cmd, args=(command,))
+            self.threads.append(t)
 
-        print(run_id, ' -> Run', self.mid)
+        print('    ', run_id, ' -> Run', self.mid)
         self.out.write(run_id + '\n')
         self.mid += 1
 
         return command
-    
+
     def scan_all(self):
         ''' Scan all the parameters input from command line using DFS.'''
         if self.mark_on:
             self.dfs(0, [], True)
         self.dfs(0, [])
         self.out.close()
+
+        # support multithreading
+        print(f'\n - Begin multithreading with {self.n_thread} threads for {len(self.threads)} tasks in total')
+        for i in range(math.ceil( len(self.threads) / self.n_thread)):
+            for mode in [0, 1]:
+                for j in range(self.n_thread):
+                    n = i * self.n_thread + j
+                    if n == len(self.threads):
+                        break
+                    if not mode:
+                        self.threads[n].start()
+                        print(f'    Starting thread {n}')
+                    else:
+                        self.threads[n].join()
 
     def dfs(self, index, value, flag=False):
         ''' DFS of scan_all: false for execute, true for mark. '''
@@ -306,7 +332,7 @@ if __name__ == "__main__":
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-crosson] [-markon] [-changedat]")
+            print("Usage: python multiRun.py [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
