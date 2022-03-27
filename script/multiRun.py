@@ -24,7 +24,7 @@ class MultiRun_Module:
         self.cross_on = False           # switch of drawing the cross traffic
         self.mark_on = False            # switch of mark Co/NonCo for each run
         self.change_dat_name = False    # if change dat name with run ID
-        self.n_thread = 1
+        self.n_thread = 6
         self.threads = []
 
         root = os.getcwd()
@@ -50,6 +50,7 @@ class MultiRun_Module:
     def parse(self, args):
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
         read_program = False
+        not_number = False
         for arg in args:
             if arg == '-crosson':
                 self.cross_on = True
@@ -67,14 +68,21 @@ class MultiRun_Module:
             elif read_program:
                 self.program = arg
                 read_program = False
+            elif arg[:2] == '--':       # used to specify non-number parameters
+                self.params.append(arg[2:])
+                not_number = True
             elif arg[0] == '-':
                 self.params.append(arg[1:])
             elif len(self.params) - len(self.ranges) == 1:
-                th1, step, th2 = arg.split(':')
-                if self.params[-1] == 'tid' or self.params[-1] == 'mid':
-                    self.ranges.append( (int(th1), int(step), int(th2)) )
-                else:    
-                    self.ranges.append( (float(th1), float(step), float(th2)) )
+                if not_number:
+                    self.ranges.append((arg,))
+                    not_number = False
+                else:
+                    th1, step, th2 = arg.split(':')
+                    if self.params[-1] == 'tid' or self.params[-1] == 'mid':
+                        self.ranges.append( (int(th1), int(step), int(th2)) )
+                    else:    
+                        self.ranges.append( (float(th1), float(step), float(th2)) )
             else:
                 print('Error: parameters must be followed by a range!')
                 exit(1)
@@ -145,12 +153,17 @@ class MultiRun_Module:
                 self.mark(self.params, list(value))
             return
         
-        th1, step, th2 = self.ranges[index]
-        num = int((th2 - th1) / step) + 1
-        for i in range(num):
-            value.append(th1 + i * step)
+        if len(self.ranges[index]) == 1:        # non-number param
+            value.append(self.ranges[index][0])
             self.dfs(index + 1, value, flag)
             value.pop()
+        else:
+            th1, step, th2 = self.ranges[index]
+            num = int((th2 - th1) / step) + 1
+            for i in range(num):
+                value.append(th1 + i * step)
+                self.dfs(index + 1, value, flag)
+                value.pop()
 
     def plot_all(self, show_flow=None):
         for id, mid in self.run_map.items():
