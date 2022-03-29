@@ -7,7 +7,7 @@ cd ..
 
 git clone https://github.com/PrinceS17/BBR_test.git
 cd BBR_test/ns-3.27
-CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --enable-examples --enable-sudo --visualize
+CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --enable-sudo --visualize
 ./waf build
 mkdir MboxStatistics MboxFig
 
