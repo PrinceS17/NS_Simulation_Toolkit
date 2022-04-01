@@ -16,7 +16,7 @@ class MultiRun_Module:
         self.scpt_path = ''  # path of script containing mPlotData.sh
         # self.program = 'brite-for-all' # program name that we want to run
         self.program = 'brite-for-cbtnk'
-        self.mid = random.randint(11, 999)         # unique mid for each run
+        self.mid = random.randint(900, 9999)         # unique mid for each run
         self.params = []     # list of parameters of mrun
         self.ranges = []     # list of tuples (min, max, step) corresponding to params above
         self.run_map = {}    # run_id -> mid, for later fetch of data
