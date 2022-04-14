@@ -24,10 +24,15 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+import os, sys
 from math import ceil
 import numpy as np
 import pandas as pd
 from collections import deque
+
+from matplotlib import pyplot as plt
+import seaborn as sns
+
 
 """
 This is an implementation of the Shared Bottleneck Detection (SBD) algorithm
@@ -169,8 +174,9 @@ class SBDAlgorithm:
         K = round(self.T / t_unit)
         for col in ['flow', 'owd', 'drop']:
             assert col in flows.columns
-        res_df = pd.DataFrame(columns=['flow', 'skew_est', 'var_est', 'freq_est', 'pkt_loss'])
+        res_df = pd.DataFrame(columns=['time', 'flow', 'skew_est', 'var_est', 'freq_est', 'pkt_loss'])
         for flow in flows['flow'].unique():
+            # TODO: parallelization here for multiflow
             owds = flows.query(f'flow == {flow}')['owd']
             drops = flows.query(f'flow == {flow}')['drop']
             res1 = self._owd_process(owds, K)
@@ -180,7 +186,8 @@ class SBDAlgorithm:
             res1.update(res2)
             flow_df = pd.DataFrame(res1)            
             flow_df['flow'] = flow
-            res_df = res_df.append(flow_df)
+            flow_df['time'] = pd.Series([i * self.T for i in range(flow_df.shape[0])])
+            res_df = res_df.append(flow_df, ignore_index=True)
         return res_df
 
 
@@ -189,3 +196,28 @@ class SBDAlgorithm:
         """
         pass
 
+
+def sbd_process(csv, t_unit=0.01, folders=['.', '../BBR_test/ns3.27/MboxStatistics']):
+    """Given csv file, runs SBD algorithm to get the features.
+    """
+    for folder in folders:
+        path = os.path.join(folder, csv)
+        if os.path.exists(path):
+            csv = path
+            break
+    df = pd.read_csv(csv, index_col=False)
+    sbd = SBDAlgorithm()
+    res_df = sbd.stream_process(df, t_unit=t_unit)
+
+    fields = ['skew_est', 'var_est', 'freq_est', 'pkt_loss']
+    fig, axs = plt.subplots(len(fields), 1, figsize=(10, 2*len(fields)))
+    for field, ax in zip(fields, axs):
+        sns.lineplot(x='time', y=field, hue='flow', data=res_df, ax=ax)
+    plt.show()
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print('Usage: python3 sbd.py CSV_NAME')
+        exit(0)
+    sbd_process(sys.argv[1])

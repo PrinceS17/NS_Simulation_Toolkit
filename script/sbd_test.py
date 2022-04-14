@@ -101,8 +101,8 @@ class SbdTest(unittest.TestCase):
         # TODO: only very simple case here, relying on simulated trace
         flows = pd.DataFrame(columns=['flow', 'owd', 'drop'],
             data=[[0, 0.1, 0]] * 30 + [[0, 0.1, 1]] * 5)
-        expected = pd.DataFrame(columns=['flow', 'skew_est', 'var_est', 'freq_est', 'pkt_loss'],
-            data=[[0, 0, 0, 0, 1/7]])
+        expected = pd.DataFrame(columns=['time', 'flow', 'skew_est', 'var_est', 'freq_est', 'pkt_loss'],
+            data=[[0, 0, 0, 0, 0, 1/7]])
         actual = self.sbd.stream_process(flows)
         # np.testing.assert_almost_equal(actual, expected, decimal=2)
         self.assertTrue((actual == expected).all()[0])
