@@ -16,7 +16,7 @@ class MultiRun_Module:
         self.scpt_path = ''  # path of script containing mPlotData.sh
         # self.program = 'brite-for-all' # program name that we want to run
         self.program = 'brite-for-cbtnk'
-        self.mid = random.randint(900, 9999)         # unique mid for each run
+        self.mid = random.randint(9900, 99999)         # unique mid for each run
         self.params = []     # list of parameters of mrun
         self.ranges = []     # list of tuples (min, max, step) corresponding to params above
         self.run_map = {}    # run_id -> mid, for later fetch of data
@@ -110,7 +110,23 @@ class MultiRun_Module:
         for para, val in zip(name, value):
             command += ' -%s=%s' % (para, val)
         command += '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+        self._run_in_thread(command, run_id)
 
+    def execute_arg_group(self, csv):
+        print(os.getcwd())
+        df = pd.read_csv(csv, index_col=False)
+        cmds = []
+        prefix = './waf --run "scratch/%s -mid=%s' % (self.program, self.mid)
+        suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+        for _, row in df.iterrows():
+            cmd, run_id = prefix, ''
+            for col in df.columns:
+                cmd += ' -%s=%s' % (col, row[col])
+                run_id += f'_{col}={row[col]}'
+            cmd += suffix
+            self._run_in_thread(cmd, run_id)
+
+    def _run_in_thread(self, command, run_id):
         if not is_test:
             print(f'  - Thread {len(self.threads)}: {command}')
             # os.system(command)
@@ -123,11 +139,14 @@ class MultiRun_Module:
 
         return command
 
-    def scan_all(self):
+    def scan_all(self, csv=None):
         ''' Scan all the parameters input from command line using DFS.'''
-        if self.mark_on:
-            self.dfs(0, [], True)
-        self.dfs(0, [])
+        if csv:
+            self.execute_arg_group(csv)
+        else:
+            if self.mark_on:
+                self.dfs(0, [], True)
+            self.dfs(0, [])
         self.out.close()
 
         # support multithreading
@@ -313,6 +332,16 @@ def test_root():
         print('  -- Test failed.')
         exit(1)
 
+def test_arg_group():
+    mr = MultiRun_Module()
+    csv = '../../script/test.csv'
+    mr.scan_all(csv)
+    res = input('  -> is the run correctly initiated? ')
+    if 'y' in res:
+        print('  -- Test for arg group passed.\n')
+    else:
+        print('  -- Test failed.')
+        exit(1)
 
 def main():
     # TODO: hack of the # flow to plot for now
@@ -334,14 +363,15 @@ def main():
 
 # Note: script will overwrite the data file
 if __name__ == "__main__":
-    is_test = False     # test mode will disable the mrun command
+    is_test = True     # test mode will disable the mrun command
 
     if is_test:         # test cases here: intended tests all passed
         # test_parse()
         # test_execute()
         # test_dfs()
         # test_visualize()
-        test_root()
+        # test_root()
+        test_arg_group()
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
