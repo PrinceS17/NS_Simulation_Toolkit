@@ -109,6 +109,9 @@ class SBDAlgorithm:
         d_avg, x_h = 0, None
         res = {'skew_est': [], 'var_est': [], 'freq_est': []}
         for i, owd in enumerate(flow_owds[::-1]):
+            # TODO: the reverse traversal of owd? correct or not?
+            #       should be like only keeping K from the end, but still the normal order?
+
             window.append(owd)
             if not (i % K == K - 1 or i == len(flow_owds) - 1):
                 continue
