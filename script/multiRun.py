@@ -1,5 +1,9 @@
+from concurrent.futures import thread
 from matplotlib import pyplot as plt
-import os, sys, time, random
+import math, os, sys, time, random
+from threading import Thread
+import pandas as pd
+import seaborn as sns
 
 is_test = False
 
@@ -10,8 +14,9 @@ class MultiRun_Module:
         self.path = ''       # path of current processing
         self.res_path = ''   # path of results: figs and logs
         self.scpt_path = ''  # path of script containing mPlotData.sh
-        self.program = 'brite-for-all' # program name that we want to run
-        self.mid = random.randint(11, 999)         # unique mid for each run
+        # self.program = 'brite-for-all' # program name that we want to run
+        self.program = 'brite-for-cbtnk'
+        self.mid = random.randint(9900, 99999)         # unique mid for each run
         self.params = []     # list of parameters of mrun
         self.ranges = []     # list of tuples (min, max, step) corresponding to params above
         self.run_map = {}    # run_id -> mid, for later fetch of data
@@ -19,6 +24,8 @@ class MultiRun_Module:
         self.cross_on = False           # switch of drawing the cross traffic
         self.mark_on = False            # switch of mark Co/NonCo for each run
         self.change_dat_name = False    # if change dat name with run ID
+        self.n_thread = 6
+        self.threads = []
 
         root = os.getcwd()
         root = root[:root.find ('Toolkit') + 7]
@@ -43,6 +50,7 @@ class MultiRun_Module:
     def parse(self, args):
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
         read_program = False
+        not_number = False
         for arg in args:
             if arg == '-crosson':
                 self.cross_on = True
@@ -55,17 +63,26 @@ class MultiRun_Module:
             elif arg == '-program':
                 read_program = True
                 continue
+            elif '-j' in arg:
+                self.n_thread = int(arg[2:])
             elif read_program:
                 self.program = arg
                 read_program = False
+            elif arg[:2] == '--':       # used to specify non-number parameters
+                self.params.append(arg[2:])
+                not_number = True
             elif arg[0] == '-':
                 self.params.append(arg[1:])
             elif len(self.params) - len(self.ranges) == 1:
-                th1, step, th2 = arg.split(':')
-                if self.params[-1] == 'tid' or self.params[-1] == 'mid':
-                    self.ranges.append( (int(th1), int(step), int(th2)) )
-                else:    
-                    self.ranges.append( (float(th1), float(step), float(th2)) )
+                if not_number:
+                    self.ranges.append((arg,))
+                    not_number = False
+                else:
+                    th1, step, th2 = arg.split(':')
+                    if self.params[-1] == 'tid' or self.params[-1] == 'mid':
+                        self.ranges.append( (int(th1), int(step), int(th2)) )
+                    else:    
+                        self.ranges.append( (float(th1), float(step), float(th2)) )
             else:
                 print('Error: parameters must be followed by a range!')
                 exit(1)
@@ -79,6 +96,10 @@ class MultiRun_Module:
         self.co_map[run_id] = True if has_co == 'y' else False
         return has_co
 
+    def run_cmd(self, cmd):
+        ''' Mainly for threading.'''
+        os.system(cmd)
+
     def execute(self, name, value):
         ''' Execute a parameter given its name and range in the form of (min, max, step). '''
         val_str = [str(val) for val in value]
@@ -89,22 +110,58 @@ class MultiRun_Module:
         for para, val in zip(name, value):
             command += ' -%s=%s' % (para, val)
         command += '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+        self._run_in_thread(command, run_id)
 
+    def execute_arg_group(self, csv):
+        print(os.getcwd())
+        df = pd.read_csv(csv, index_col=False)
+        cmds = []
+        prefix = './waf --run "scratch/%s -mid=%s' % (self.program, self.mid)
+        suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+        for _, row in df.iterrows():
+            cmd, run_id = prefix, ''
+            for col in df.columns:
+                cmd += ' -%s=%s' % (col, row[col])
+                run_id += f'_{col}={row[col]}'
+            cmd += suffix
+            self._run_in_thread(cmd, run_id)
+
+    def _run_in_thread(self, command, run_id):
         if not is_test:
-            os.system(command)
+            print(f'  - Thread {len(self.threads)}: {command}')
+            # os.system(command)
+            t = Thread(target=self.run_cmd, args=(command,))
+            self.threads.append(t)
 
-        print(run_id, ' -> Run', self.mid)
+        print('    ', run_id, ' -> Run', self.mid)
         self.out.write(run_id + '\n')
         self.mid += 1
 
         return command
-    
-    def scan_all(self):
+
+    def scan_all(self, csv=None):
         ''' Scan all the parameters input from command line using DFS.'''
-        if self.mark_on:
-            self.dfs(0, [], True)
-        self.dfs(0, [])
+        if csv:
+            self.execute_arg_group(csv)
+        else:
+            if self.mark_on:
+                self.dfs(0, [], True)
+            self.dfs(0, [])
         self.out.close()
+
+        # support multithreading
+        print(f'\n - Begin multithreading with {self.n_thread} threads for {len(self.threads)} tasks in total')
+        for i in range(math.ceil( len(self.threads) / self.n_thread)):
+            for mode in [0, 1]:
+                for j in range(self.n_thread):
+                    n = i * self.n_thread + j
+                    if n == len(self.threads):
+                        break
+                    if not mode:
+                        self.threads[n].start()
+                        print(f'    Starting thread {n}')
+                    else:
+                        self.threads[n].join()
 
     def dfs(self, index, value, flag=False):
         ''' DFS of scan_all: false for execute, true for mark. '''
@@ -115,13 +172,43 @@ class MultiRun_Module:
                 self.mark(self.params, list(value))
             return
         
-        th1, step, th2 = self.ranges[index]
-        num = int((th2 - th1) / step) + 1
-        for i in range(num):
-            value.append(th1 + i * step)
+        if len(self.ranges[index]) == 1:        # non-number param
+            value.append(self.ranges[index][0])
             self.dfs(index + 1, value, flag)
             value.pop()
-        
+        else:
+            th1, step, th2 = self.ranges[index]
+            num = int((th2 - th1) / step) + 1
+            for i in range(num):
+                value.append(th1 + i * step)
+                self.dfs(index + 1, value, flag)
+                value.pop()
+
+    def plot_all(self, show_flow=None):
+        for id, mid in self.run_map.items():
+            csv = f'MboxStatistics/all-data_{mid}.csv'
+            df = pd.read_csv(csv, index_col=False)
+            if show_flow:
+                df = df[df.flow < show_flow]
+            for field in df.columns:
+                if field in ['time', 'flow']:
+                    continue
+                plt.figure()
+                sns.lineplot(x='time', y=field, hue='flow', data=df)
+                plt.savefig(os.path.join(self.res_path, 'figs', f'{id}_{field}_{mid}.pdf'))
+                plt.close()
+    
+    def collect_all(self):
+        for id, mid in self.run_map.items():
+            if self.mark_on:
+                cmark = 'Co' if self.co_map[id] else 'NonCo'
+            csv = f'MboxStatistics/all-data_{mid}.csv'
+
+            fdir = os.path.join(self.res_path, 'dats')
+            os.system(f'cp {csv} {fdir}')
+            with open(os.path.join(fdir, 'content.txt'), 'a+') as f:
+                csv1 = f'all-data_{mid}.csv'
+                f.write(f'{id},{cmark},{csv1}\n')
 
     def visualize(self, run_id):
         ''' Draw the result data rates given run_id, return mid for reference. '''
@@ -145,11 +232,13 @@ class MultiRun_Module:
         return mid, command
 
     def show_all(self):
+        # deprecating
         ''' Draw all the result using run_map and put into figs directory. '''
         for id in self.run_map:
             self.visualize(id)
     
-    def collect_all(self):
+    def collect_all_old(self):
+        # deprecating
         ''' Collect all the RTT and LLR data. '''
         os.chdir(os.path.join(self.res_path, 'dats'))
         for id in self.run_map:
@@ -243,8 +332,19 @@ def test_root():
         print('  -- Test failed.')
         exit(1)
 
+def test_arg_group():
+    mr = MultiRun_Module()
+    csv = '../../script/test.csv'
+    mr.scan_all(csv)
+    res = input('  -> is the run correctly initiated? ')
+    if 'y' in res:
+        print('  -- Test for arg group passed.\n')
+    else:
+        print('  -- Test failed.')
+        exit(1)
 
 def main():
+    # TODO: hack of the # flow to plot for now
     ''' Logical using order of the external API of the class. '''
     # mr = MultiRun_Module()
     # folder = os.path.join('/home', 'sapphire', 'Documents', 'ns3_BBR', 'ns-3.27')
@@ -253,26 +353,29 @@ def main():
     print(' -- Parsing complete. Start scanning ...')
     mr.scan_all()
     print(' -- Scanning comoplete. Start generating figures ...')
-    mr.show_all()
-    print(' -- All figures stored ...')
+    mr.plot_all(2)
+
+    # mr.show_all()
+    # print(' -- All figures stored ...')
     mr.collect_all()
-    print(' -- All Rtt & Llr data collected.')
+    print(' -- All data collected.')
 
 
-# Note: script will overwrite the data fileg
+# Note: script will overwrite the data file
 if __name__ == "__main__":
-    is_test = False     # test mode will disable the mrun command
+    is_test = True     # test mode will disable the mrun command
 
     if is_test:         # test cases here: intended tests all passed
         # test_parse()
         # test_execute()
         # test_dfs()
         # test_visualize()
-        test_root()
+        # test_root()
+        test_arg_group()
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-crosson] [-markon] [-changedat]")
+            print("Usage: python multiRun.py [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")

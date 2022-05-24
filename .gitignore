@@ -1,0 +1,5 @@
+*.pyc
+*.pdf
+*.png
+*.csv
+results*/
