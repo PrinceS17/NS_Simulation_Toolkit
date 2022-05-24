@@ -26,6 +26,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os, sys
 from math import ceil
+from typing import OrderedDict
 import numpy as np
 import pandas as pd
 from collections import deque
@@ -63,6 +64,7 @@ class SBDAlgorithm:
         self.p_f = 0.1          # grouping threshold for freq_est
         self.p_mad = 0.1        # grouping threshold for var_loss
         self.p_d = 0.1          # grouping threshold for pkt_loss
+        self.p_l = 0.05         # TODO: pkt_loss threashold for flow bottleneck 
         self.F = 20             # number of sample in the flat portion used in the moving avg
 
     def _summarize_owd(self, owds, K):
@@ -191,10 +193,91 @@ class SBDAlgorithm:
         return res_df
 
 
-    def clustering(self, res_df):
-        """TODO: clustering technique based on the metric we get.
+    def rmcat_clustering(self, res_df):
+        """Based on RFC 8382 Section 3.3.
+        TODO: test definitely needed!
+
+        Input df has columns ['time', 'flow', 'skew_est', 'var_est', 'freq_est', 'pkt_loss'],
+        i.e. the features are provided for each interval T. Thus, we will cluster the flow
+        for each interval T, i.e. each row. The output is added as a new column for the df,
+        with 0 for not traversing bottleneck, and 1~n for the group number.
+
+        Returns:
+            DataFrame: result with the 'group' column added.
         """
-        pass
+
+        # def sort_and_group(flows, df, attr, th, unused_grp_no):
+        #     # sort flows with attrs, group them, and return grouped df ['flow', 'group']
+        #     # assume df contains group No.
+        #     assert 'flow' in df and attr in df and 'group' in df
+        #     df = df.sort_values(by=attr).copy()
+        #     val = df[0][attr]
+        #     for _, row in df.iterrows():
+        #         if row[attr] - val < th:
+        #             res = pd.concat(res, pd.DataFrame({'flow': row.flow, 'group': unused_grp_no}))
+                
+
+
+        flows = res_df.flow.unique()
+        df_groups = res_df.groupby(by='time')
+        btnk_group = pd.DataFrame(columns=['time', 'flow', 'group'])
+        prev_btnk = {}          # flow: btnk or not
+
+        def add_group(row, grp, btnk_group):
+            brow = pd.DataFrame([[row.time, row.flow, grp]], columns=['time', 'flow', 'group'])
+            btnk_group = pd.concat(btnk_group, brow, ignore_index=True)
+            return btnk_group        
+
+
+        for flow in flows:
+            prev_btnk[flow] == False
+        for time, group in df_groups:
+            # each group is a df at the time
+            # TODO: maybe some better pandas way than iteration
+            assert (group.flow.unique() == flows).all()
+            rest = []
+            # unused_grp_no = 1
+
+
+            # 1. check the flow traversing a bottleneck
+            for _, row in group.iterrows():
+                btnked = row.skew_est < self.c_s or (row.skew_est < self.c_h and prev_btnk[row.flow]) \
+                    or row.pkt_loss > self.p_l
+                if not btnked:
+                    btnk_group = add_group(row, -1, btnk_group)
+                else:
+                    rest.append(row.flow)
+            
+            # 2. group by freq_est
+            df = group.query(f'flow in {rest}').sort_values(by=group.columns).copy()
+            d1 = df[0]
+            val_high = OrderedDict[{'freq_est': d1.freq_est, 'var_est': d1.var_est,
+                'skew_est': d1.skew_est, 'pkt_loss': d1.pkt_loss}]
+            ps = OrderedDict[{'freq_est': self.p_f, 'var_est': self.p_mad,
+                'skew_est': self.p_s, 'pkt_loss': self.p_d}]
+            cur_group = 1
+            for i, row in df.iterrows():
+                if not i:
+                    btnk_group = add_group(row, cur_group, btnk_group)
+                    continue
+                for i, tp in enumerate(val_high.items()):
+                    k, v = tp
+                    if (k in ['freq_est', 'skew_est'] and row[k] - v >= ps[k]) or \
+                        (k in ['var_est', 'pkt_loss'] and row[k] - v >= ps[k] * row[k]):
+                        cur_group += 1
+                        for j in range(i, len(val_high)):
+                            # the heirachical grouping means only later field should update the high value
+                            #   for new leaf groups!
+                            k = val_high.keys()[j]
+                            val_high[k] = row[k]
+                        break
+                btnk_group = add_group(row, cur_group, btnk_group)
+
+        res_df = res_df.merge(btnk_group, on=['time', 'flow'])
+        return res_df
+
+        
+
 
 
 def sbd_process(csv, t_unit=0.01, folders=['.', '../BBR_test/ns3.27/MboxStatistics']):
