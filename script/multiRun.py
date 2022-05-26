@@ -50,7 +50,9 @@ class MultiRun_Module:
     def parse(self, args):
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
         read_program = False
+        read_csv = False
         not_number = False
+        self.csv = None
         for arg in args:
             if arg == '-crosson':
                 self.cross_on = True
@@ -63,11 +65,17 @@ class MultiRun_Module:
             elif arg == '-program':
                 read_program = True
                 continue
+            elif arg == '-csv':
+                read_csv = True
+                continue
             elif '-j' in arg:
                 self.n_thread = int(arg[2:])
             elif read_program:
                 self.program = arg
                 read_program = False
+            elif read_csv:
+                self.csv = arg
+                read_csv = False
             elif arg[:2] == '--':       # used to specify non-number parameters
                 self.params.append(arg[2:])
                 not_number = True
@@ -116,13 +124,15 @@ class MultiRun_Module:
         print(os.getcwd())
         df = pd.read_csv(csv, index_col=False)
         cmds = []
-        prefix = './waf --run "scratch/%s -mid=%s' % (self.program, self.mid)
-        suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+        
         for _, row in df.iterrows():
-            cmd, run_id = prefix, ''
+            run_id = ''
+            cmd = f'./waf --run "scratch/{self.program} -mid={self.mid}'
+            suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
             for col in df.columns:
                 cmd += ' -%s=%s' % (col, row[col])
                 run_id += f'_{col}={row[col]}'
+            self.run_map[run_id] = self.mid
             cmd += suffix
             self._run_in_thread(cmd, run_id)
 
@@ -141,7 +151,10 @@ class MultiRun_Module:
 
     def scan_all(self, csv=None):
         ''' Scan all the parameters input from command line using DFS.'''
-        if csv:
+        csv = csv if csv else self.csv
+        if not os.path.exists(csv):
+            csv = os.path.join('../../script/', csv)
+        if csv :
             self.execute_arg_group(csv)
         else:
             if self.mark_on:
@@ -195,20 +208,23 @@ class MultiRun_Module:
                     continue
                 plt.figure()
                 sns.lineplot(x='time', y=field, hue='flow', data=df)
-                plt.savefig(os.path.join(self.res_path, 'figs', f'{id}_{field}_{mid}.pdf'))
+                plt.savefig(os.path.join(self.res_path, 'figs', f'{field}_{mid}.pdf'))
                 plt.close()
     
     def collect_all(self):
         for id, mid in self.run_map.items():
             if self.mark_on:
                 cmark = 'Co' if self.co_map[id] else 'NonCo'
-            csv = f'MboxStatistics/all-data_{mid}.csv'
+            for prefix in ['all-data', 'queue', 'toc']:
+                csv = f'MboxStatistics/{prefix}_{mid}*.csv'
 
-            fdir = os.path.join(self.res_path, 'dats')
-            os.system(f'cp {csv} {fdir}')
-            with open(os.path.join(fdir, 'content.txt'), 'a+') as f:
-                csv1 = f'all-data_{mid}.csv'
-                f.write(f'{id},{cmark},{csv1}\n')
+                fdir = os.path.join(self.res_path, 'dats')
+                os.system(f'cp {csv} {fdir}')
+            
+            # only for manual reference now
+            # with open(os.path.join(fdir, 'content.txt'), 'a+') as f:
+            #     csv1 = f'all-data_{mid}.csv'
+            #     f.write(f'{id},{cmark},{csv1}\n')
 
     def visualize(self, run_id):
         ''' Draw the result data rates given run_id, return mid for reference. '''
@@ -352,18 +368,19 @@ def main():
     mr.parse(sys.argv[1:])
     print(' -- Parsing complete. Start scanning ...')
     mr.scan_all()
-    print(' -- Scanning comoplete. Start generating figures ...')
+    print(' -- Scanning comoplete.')
+    mr.collect_all()
+    print(' -- All data collected.')
     mr.plot_all(2)
 
     # mr.show_all()
     # print(' -- All figures stored ...')
-    mr.collect_all()
-    print(' -- All data collected.')
+    
 
 
 # Note: script will overwrite the data file
 if __name__ == "__main__":
-    is_test = True     # test mode will disable the mrun command
+    is_test = False     # test mode will disable the mrun command
 
     if is_test:         # test cases here: intended tests all passed
         # test_parse()
@@ -375,11 +392,12 @@ if __name__ == "__main__":
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("Usage: python multiRun.py [-csv CSV] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
             print("     -changedat      change mid in dat file name to run ID.")
+            print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
             exit(1)
         main()
 
