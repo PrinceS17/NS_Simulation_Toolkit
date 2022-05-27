@@ -1,9 +1,11 @@
 from concurrent.futures import thread
 from matplotlib import pyplot as plt
 import math, os, sys, time, random
+import threading
 from threading import Thread
 import pandas as pd
 import seaborn as sns
+import time
 
 is_test = False
 
@@ -53,6 +55,7 @@ class MultiRun_Module:
         read_csv = False
         not_number = False
         self.csv = None
+        self.recompile = False
         for arg in args:
             if arg == '-crosson':
                 self.cross_on = True
@@ -68,6 +71,8 @@ class MultiRun_Module:
             elif arg == '-csv':
                 read_csv = True
                 continue
+            elif arg == '-compile':
+                self.recompile = True
             elif '-j' in arg:
                 self.n_thread = int(arg[2:])
             elif read_program:
@@ -163,24 +168,41 @@ class MultiRun_Module:
         self.out.close()
 
         # build first in serial to avoid conflicts
-        os.system('./waf build')
+        if self.recompile:
+            os.system('CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --visualize')
+            os.system('./waf build')
 
         # support multithreading
         t1 = time.time()
         print(f'\n - Begin multithreading with {self.n_thread} threads for {len(self.threads)} tasks in total')
-        for i in range(math.ceil( len(self.threads) / self.n_thread)):
-            for mode in [0, 1]:
-                for j in range(self.n_thread):
-                    n = i * self.n_thread + j
-                    if n == len(self.threads):
-                        break
-                    if not mode:
-                        self.threads[n].start()
-                        print(f'    Starting thread {n}')
-                    else:
-                        self.threads[n].join()
+        # for i in range(math.ceil( len(self.threads) / self.n_thread)):
+        #     for mode in [0, 1]:
+        #         for j in range(self.n_thread):
+        #             n = i * self.n_thread + j
+        #             if n == len(self.threads):
+        #                 break
+        #             if not mode:
+        #                 self.threads[n].start()
+        #                 print(f'    Starting thread {n}')
+        #             else:
+        #                 self.threads[n].join()
+
+        # use active_count to schedule a new thread ASAP to avoid wasting time!
+        i = 0
+        n_basic = threading.active_count()
+        while i < len(self.threads):
+            if threading.active_count() - n_basic < self.n_thread:
+                self.threads[i].start()
+                print(f'    Starting thread {i}')
+                i += 1
+                interval = 0
+            else:
+                interval = 1
+            time.sleep(interval)
+        for t in self.threads:
+            t.join()
         t2 = time.time()
-        print(f'\n - Duration: {t1} -> {t2} = {t2 - t1}s')
+        print(f'\n - Duration: {t1} -> {t2} = {t2 - t1:.3f}s')
 
     def dfs(self, index, value, flag=False):
         ''' DFS of scan_all: false for execute, true for mark. '''
@@ -398,12 +420,13 @@ if __name__ == "__main__":
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-csv CSV] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("Usage: python multiRun.py [-csv CSV] [-compile] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
             print("     -changedat      change mid in dat file name to run ID.")
             print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
+            print("     -compile        recompile the ns-3")
             exit(1)
         main()
 
