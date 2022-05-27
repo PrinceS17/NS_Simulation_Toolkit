@@ -162,7 +162,11 @@ class MultiRun_Module:
             self.dfs(0, [])
         self.out.close()
 
+        # build first in serial to avoid conflicts
+        os.system('./waf build')
+
         # support multithreading
+        t1 = time.time()
         print(f'\n - Begin multithreading with {self.n_thread} threads for {len(self.threads)} tasks in total')
         for i in range(math.ceil( len(self.threads) / self.n_thread)):
             for mode in [0, 1]:
@@ -175,6 +179,8 @@ class MultiRun_Module:
                         print(f'    Starting thread {n}')
                     else:
                         self.threads[n].join()
+        t2 = time.time()
+        print(f'\n - Duration: {t1} -> {t2} = {t2 - t1}s')
 
     def dfs(self, index, value, flag=False):
         ''' DFS of scan_all: false for execute, true for mark. '''
