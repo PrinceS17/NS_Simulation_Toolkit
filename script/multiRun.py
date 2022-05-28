@@ -161,6 +161,7 @@ class MultiRun_Module:
             csv = os.path.join('../../script/', csv)
         if csv :
             self.execute_arg_group(csv)
+            self.csv = csv
         else:
             if self.mark_on:
                 self.dfs(0, [], True)
@@ -240,6 +241,8 @@ class MultiRun_Module:
                 plt.close()
     
     def collect_all(self):
+        if self.csv:
+            os.system(f'cp {self.csv} {self.res_path}')
         for id, mid in self.run_map.items():
             if self.mark_on:
                 cmark = 'Co' if self.co_map[id] else 'NonCo'
