@@ -55,7 +55,7 @@ class MultiRun_Module:
         read_csv = False
         not_number = False
         self.csv = None
-        self.recompile = False
+        self.rebuild = False
         for arg in args:
             if arg == '-crosson':
                 self.cross_on = True
@@ -71,8 +71,8 @@ class MultiRun_Module:
             elif arg == '-csv':
                 read_csv = True
                 continue
-            elif arg == '-compile':
-                self.recompile = True
+            elif arg == '-rebuild':
+                self.rebuild = True
             elif '-j' in arg:
                 self.n_thread = int(arg[2:])
             elif read_program:
@@ -119,7 +119,7 @@ class MultiRun_Module:
         run_id = '_'.join( ['='.join(c) for c in zip(name, val_str)] )
         self.run_map[run_id] = self.mid
 
-        command = './waf --run "scratch/%s -mid=%s' % (self.program, self.mid)
+        command = f'./waf --run "scratch/{self.program} -{self.id_param}={self.mid}'
         for para, val in zip(name, value):
             command += ' -%s=%s' % (para, val)
         command += '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
@@ -132,7 +132,7 @@ class MultiRun_Module:
         
         for _, row in df.iterrows():
             run_id = ''
-            cmd = f'./waf --run "scratch/{self.program} -mid={self.mid}'
+            cmd = f'./waf --run "scratch/{self.program} -{self.id_param}={self.mid}'
             suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
             for col in df.columns:
                 cmd += ' -%s=%s' % (col, row[col])
@@ -157,6 +157,9 @@ class MultiRun_Module:
     def scan_all(self, csv=None):
         ''' Scan all the parameters input from command line using DFS.'''
         csv = csv if csv else self.csv
+        self.id_param = 'mid'
+        if self.program == 'cbtnk-dumbbell':
+            self.id_param = 'run_id'
         if not os.path.exists(csv):
             csv = os.path.join('../../script/', csv)
         if csv :
@@ -169,7 +172,7 @@ class MultiRun_Module:
         self.out.close()
 
         # build first in serial to avoid conflicts
-        if self.recompile:
+        if self.rebuild:
             os.system('CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --visualize')
             os.system('./waf build')
 
@@ -423,13 +426,13 @@ if __name__ == "__main__":
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-csv CSV] [-compile] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("Usage: python multiRun.py [-csv CSV] [-rebuild] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
             print("     -changedat      change mid in dat file name to run ID.")
             print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
-            print("     -compile        recompile the ns-3")
+            print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
             exit(1)
         main()
 
