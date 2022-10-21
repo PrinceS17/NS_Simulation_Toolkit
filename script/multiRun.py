@@ -17,7 +17,9 @@ class MultiRun_Module:
         self.res_path = ''   # path of results: figs and logs
         self.scpt_path = ''  # path of script containing mPlotData.sh
         # self.program = 'brite-for-all' # program name that we want to run
-        self.program = 'brite-for-cbtnk'
+        # self.program = 'brite-for-cbtnk'
+        # self.program = 'cbtnk-dumbbell'
+        self.program = 'cbtnk-extended-db'
         self.mid = random.randint(9900, 99999)         # unique mid for each run
         self.params = []     # list of parameters of mrun
         self.ranges = []     # list of tuples (min, max, step) corresponding to params above
@@ -32,6 +34,7 @@ class MultiRun_Module:
         root = os.getcwd()
         root = root[:root.find ('Toolkit') + 7]
         self.path = os.path.join(root, 'BBR_test', 'ns-3.27') if not folder else folder
+        self.config_path = os.path.join(self.path, 'edb_configs')
         self.scpt_path = os.path.join(root, 'script') if not scpt else scpt
         print('root dir: {}'.format (root))
         print('ns path: %s' % self.path)
@@ -53,6 +56,8 @@ class MultiRun_Module:
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
         read_program = False
         read_csv = False
+        read_config_tag = 0
+        self.config_tag = []
         not_number = False
         self.csv = None
         self.rebuild = False
@@ -71,6 +76,9 @@ class MultiRun_Module:
             elif arg == '-csv':
                 read_csv = True
                 continue
+            elif arg == '-config-tag':
+                read_config_tag = 1
+                continue
             elif arg == '-rebuild':
                 self.rebuild = True
             elif '-j' in arg:
@@ -81,6 +89,11 @@ class MultiRun_Module:
             elif read_csv:
                 self.csv = arg
                 read_csv = False
+            elif read_config_tag > 0:
+                self.config_tag.append(arg)
+                read_config_tag += 1
+                if read_config_tag > 2:
+                    read_config_tag = 0
             elif arg[:2] == '--':       # used to specify non-number parameters
                 self.params.append(arg[2:])
                 not_number = True
@@ -141,6 +154,59 @@ class MultiRun_Module:
             cmd += suffix
             self._run_in_thread(cmd, run_id)
 
+    def execute_configs(self):
+# TODO: consider link/flow/cross! input tag but not the exact csv name!
+#       use base_tag, specific tag, for all the csvs
+#       construct all threee csvs before running the cmd, as only one tag can be passed
+
+        config_dfs = []
+        # parse base & specific csv to merge the config dfs for all types
+        for config_type in ['link', 'flow', 'cross']:
+            config_dfs.append([])
+            base_csv = os.path.join(self.config_path, f'{self.config_tag[0]}_{config_type}.csv')
+            specific_csv = os.path.join(self.config_path, f'{self.config_tag[1]}_{config_type}.csv')
+            assert os.path.exists(base_csv)
+            df_base = pd.read_csv(base_csv, index_col=False)
+            if os.path.exists(specific_csv):
+                df_specific = pd.read_csv(specific_csv, index_col=False)
+            if not os.path.exists(specific_csv) or df_specific.empty:   # specific csv is not necessary 
+                config_dfs[-1].append(df_base)
+                continue
+
+            for run in df_specific.run.unique():
+                df = df_base.copy()
+                df_specific_run = df_specific[df_specific.run == run]
+                for _, row in df_specific_run.iterrows():
+                    for col in df_specific_run.columns:
+                        if col == 'run':
+                            continue
+                        df.loc[(df.src == row.src) & (df.dst == row.dst), col] = row[col]
+                config_dfs[-1].append(df)
+
+        # scan the types to construct the final csv w/ single tag each ns-3 run
+        tmps = os.path.join(self.config_path, 'tmps')
+        if not os.path.exists(tmps):
+            os.mkdir(tmps)
+        os.chdir(tmps)
+        for i, link_df in enumerate(config_dfs[0]):
+            link_tag = f'{self.config_tag[0]}_{i}'
+            link_df.to_csv(f'{link_tag}_link.csv', index=False)
+            for j, flow_df in enumerate(config_dfs[1]):
+                flow_tag = f'{self.config_tag[0]}_{j}'
+                flow_df.to_csv(f'{flow_tag}_flow.csv', index=False)
+                for k, cross_df in enumerate(config_dfs[2]):
+                    cross_tag = f'{self.config_tag[0]}_{k}'
+                    cross_df.to_csv(f'{cross_tag}_cross.csv', index=False)
+
+                    # run ns3
+                    cmd = f'./waf --run "scratch/{self.program} -{self.id_param}={self.mid} -configFolder={tmps}'
+                    run_id = f' -linkConfig={link_tag} -flowConfig={flow_tag} -crossConfig={cross_tag}'
+                    suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+                    self.run_map[run_id] = self.mid
+                    cmd = cmd + run_id + suffix
+                    self._run_in_thread(cmd, run_id)
+        self.tmps = tmps
+
     def _run_in_thread(self, command, run_id):
         if not is_test:
             print(f'  - Thread {len(self.threads)}: {command}')
@@ -160,20 +226,25 @@ class MultiRun_Module:
         self.id_param = 'mid'
         if self.program == 'cbtnk-dumbbell':
             self.id_param = 'run_id'
-        if not os.path.exists(csv):
-            csv = os.path.join('../../script/', csv)
-        if csv :
+        elif self.program == 'cbtnk-extended-db':
+            self.id_param = 'runId'
+        if csv:
+            if not os.path.exists(csv):
+                csv = os.path.join('../../script/', csv)
             self.execute_arg_group(csv)
             self.csv = csv
+        elif self.config_tag:
+            self.execute_configs()
         else:
             if self.mark_on:
                 self.dfs(0, [], True)
             self.dfs(0, [])
         self.out.close()
+        os.chdir(self.path)
 
         # build first in serial to avoid conflicts
         if self.rebuild:
-            os.system('CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --visualize')
+            os.system('CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --visualize > /dev/null')
             os.system('./waf build')
 
         # support multithreading
@@ -246,19 +317,21 @@ class MultiRun_Module:
     def collect_all(self):
         if self.csv:
             os.system(f'cp {self.csv} {self.res_path}')
+        if self.config_tag:
+            for tag in self.config_tag:
+                os.system(f'cp {self.config_path}/{tag}_*.csv {self.res_path}')
+
         for id, mid in self.run_map.items():
             if self.mark_on:
                 cmark = 'Co' if self.co_map[id] else 'NonCo'
-            for prefix in ['all-data', 'queue', 'toc']:
+            for prefix in ['all-data', 'queue', 'toc', 'rate']:
                 csv = f'MboxStatistics/{prefix}_{mid}*.csv'
 
                 fdir = os.path.join(self.res_path, 'dats')
                 os.system(f'cp {csv} {fdir}')
-            
-            # only for manual reference now
-            # with open(os.path.join(fdir, 'content.txt'), 'a+') as f:
-            #     csv1 = f'all-data_{mid}.csv'
-            #     f.write(f'{id},{cmark},{csv1}\n')
+
+        # os.system(f'rm -r {self.tmp}')
+
 
     def visualize(self, run_id):
         ''' Draw the result data rates given run_id, return mid for reference. '''
@@ -393,6 +466,18 @@ def test_arg_group():
         print('  -- Test failed.')
         exit(1)
 
+def test_config():
+    mr = MultiRun_Module()
+    mr.config_tag = ['test', 'test-spec']
+    mr.id_param = 'runId'
+    mr.execute_configs()
+    res = input(f'  -> are the configs correctly generated in {mr.config_path}/tmp? ')
+    if 'y' in res:
+        print('  -- Test for config passed.\n')
+    else:
+        print('  -- Test failed.')
+        exit(1)
+
 def main():
     # TODO: hack of the # flow to plot for now
     ''' Logical using order of the external API of the class. '''
@@ -422,16 +507,18 @@ if __name__ == "__main__":
         # test_dfs()
         # test_visualize()
         # test_root()
-        test_arg_group()
+        # test_arg_group()
+        test_config()
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-csv CSV] [-rebuild] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("Usage: python multiRun.py [-csv CSV] [-config-tag base_csv specific_csv] [-rebuild] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
             print("     -changedat      change mid in dat file name to run ID.")
             print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
+            print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
             print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
             exit(1)
         main()
