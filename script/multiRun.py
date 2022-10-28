@@ -57,6 +57,7 @@ class MultiRun_Module:
         read_program = False
         read_csv = False
         read_config_tag = 0
+        read_config_folder = False
         self.config_tag = []
         not_number = False
         self.csv = None
@@ -79,6 +80,8 @@ class MultiRun_Module:
             elif arg == '-config-tag':
                 read_config_tag = 1
                 continue
+            elif arg == '-config-folder':
+                read_config_folder = True
             elif arg == '-rebuild':
                 self.rebuild = True
             elif '-j' in arg:
@@ -94,6 +97,8 @@ class MultiRun_Module:
                 read_config_tag += 1
                 if read_config_tag > 2:
                     read_config_tag = 0
+            elif read_config_folder:
+                self.config_path = os.path.join(self.config_path, arg)
             elif arg[:2] == '--':       # used to specify non-number parameters
                 self.params.append(arg[2:])
                 not_number = True
@@ -140,7 +145,7 @@ class MultiRun_Module:
 
     def execute_arg_group(self, csv):
         print(os.getcwd())
-        df = pd.read_csv(csv, index_col=False)
+        df = pd.read_csv(csv, index_col=False, comment='#')
         cmds = []
         
         for _, row in df.iterrows():
@@ -154,57 +159,105 @@ class MultiRun_Module:
             cmd += suffix
             self._run_in_thread(cmd, run_id)
 
-    def execute_configs(self):
-# TODO: consider link/flow/cross! input tag but not the exact csv name!
-#       use base_tag, specific tag, for all the csvs
-#       construct all threee csvs before running the cmd, as only one tag can be passed
-
+    def _compile_configs(self):
+        """Compiles configs, i.e. base / specific config csvs, to generate csvs
+        for each ns-3 run.
+        """
         config_dfs = []
-        # parse base & specific csv to merge the config dfs for all types
         for config_type in ['link', 'flow', 'cross']:
             config_dfs.append([])
             base_csv = os.path.join(self.config_path, f'{self.config_tag[0]}_{config_type}.csv')
             specific_csv = os.path.join(self.config_path, f'{self.config_tag[1]}_{config_type}.csv')
             assert os.path.exists(base_csv)
-            df_base = pd.read_csv(base_csv, index_col=False)
+            df_base = pd.read_csv(base_csv, index_col=False, comment='#')
             if os.path.exists(specific_csv):
-                df_specific = pd.read_csv(specific_csv, index_col=False)
+                df_specific = pd.read_csv(specific_csv, index_col=False, comment='#')
             if not os.path.exists(specific_csv) or df_specific.empty:   # specific csv is not necessary 
                 config_dfs[-1].append(df_base)
                 continue
 
+            # inflate tag of multiple runs, e.g. [2], [1 4] or [1-4] in the run field
+            tails, row_idx = [], []
+            for i, row in df_specific.iterrows():
+                if '[' not in row.run:
+                    continue
+                assert ']' in row.run
+                row_idx.append(i)
+                if ' ' in row.run:
+                    runs = eval(row.run.replace(' ', ','))
+                elif '-' in row.run:
+                    tmp = eval(row.run.replace('-', ','))
+                    runs = list(range(tmp[0], tmp[1] + 1))
+                else:
+                    runs = eval(row.run)
+                    assert len(runs) == 1
+                for run in runs:
+                    new_row = row.copy()
+                    new_row.run = run
+                    tails.append(new_row.tolist())
+            tail_df = pd.DataFrame(tails, columns=df_specific.columns)
+            df_specific.drop(row_idx, inplace=True)
+            df_specific = pd.concat([df_specific, tail_df], ignore_index=True)
+            if is_test:
+                print(df_specific)
+
+            # combine base df and specific run info into config df for each ns-3 run
             for run in df_specific.run.unique():
                 df = df_base.copy()
                 df_specific_run = df_specific[df_specific.run == run]
                 for _, row in df_specific_run.iterrows():
-                    for col in df_specific_run.columns:
-                        if col == 'run':
-                            continue
-                        df.loc[(df.src == row.src) & (df.dst == row.dst), col] = row[col]
+                    i_row = df.loc[(df.src == row.src) & (df.dst == row.dst)].index
+                    new_row = row.drop('run')
+                    if not i_row.empty:
+                        df = df.drop(i_row)
+                    assert (new_row.index == df.columns).all(), \
+                        'Mismatched columns in spec and base configs!'
+                    df = df.append(new_row, ignore_index=True)
+                    # for col in df_specific_run.columns:
+                    #     if col == 'run':
+                    #         continue
+                    #     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst), col]
+                    #     df.iloc[i_row, col] = row[col]
+                df = df.sort_values(by=['src', 'dst'], ignore_index=True)
                 config_dfs[-1].append(df)
+        return config_dfs
 
-        # scan the types to construct the final csv w/ single tag each ns-3 run
+    def execute_configs(self):
+        """Execute all configs by parsing base and specific configs & generating
+        tmp configs for ns-3.
+        """
+        config_dfs = self._compile_configs()
         tmps = os.path.join(self.config_path, 'tmps')
         if not os.path.exists(tmps):
             os.mkdir(tmps)
         os.chdir(tmps)
-        for i, link_df in enumerate(config_dfs[0]):
-            link_tag = f'{self.config_tag[0]}_{i}'
-            link_df.to_csv(f'{link_tag}_link.csv', index=False)
-            for j, flow_df in enumerate(config_dfs[1]):
-                flow_tag = f'{self.config_tag[0]}_{j}'
-                flow_df.to_csv(f'{flow_tag}_flow.csv', index=False)
-                for k, cross_df in enumerate(config_dfs[2]):
-                    cross_tag = f'{self.config_tag[0]}_{k}'
-                    cross_df.to_csv(f'{cross_tag}_cross.csv', index=False)
 
-                    # run ns3
-                    cmd = f'./waf --run "scratch/{self.program} -{self.id_param}={self.mid} -configFolder={tmps}'
-                    run_id = f' -linkConfig={link_tag} -flowConfig={flow_tag} -crossConfig={cross_tag}'
-                    suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
-                    self.run_map[run_id] = self.mid
-                    cmd = cmd + run_id + suffix
-                    self._run_in_thread(cmd, run_id)
+        # Specification loop: although using combinations which seems more general,
+        # we use the zip method below to ensure a consistent meaning of 'run' in
+        # all three files. Based on our experience, scenario can hardly be meaningful
+        # w/o the careful choice of all link/flow/cross configs, so the combination
+        # of these three may often waste runs, and binding them together is more
+        # reasonable for our experiments.
+        if not len(config_dfs[0]) == len(config_dfs[1]) == len(config_dfs[2]):
+            n_max = max(len(config_dfs[0]), len(config_dfs[1]), len(config_dfs[2]))
+            for i in range(3):
+                if len(config_dfs[i]) == 1:
+                    config_dfs[i] = config_dfs[i] * n_max
+        type_str = ['link', 'flow', 'cross']
+        for i, dfs in enumerate(zip(*config_dfs)):
+            run_id = ''
+            for j in range(len(type_str)):
+                tag = f'{self.config_tag[0]}_{i}'
+                dfs[j].to_csv(f'{tag}_{type_str[j]}.csv', index=False)
+                run_id += f' -{type_str[j]}Config={tag}'
+             # run ns3
+            cmd = f'./waf --run "scratch/{self.program} -verbose=2 ' \
+                  f'-{self.id_param}={self.mid} -configFolder={tmps}'
+            suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
+            self.run_map[run_id] = self.mid
+            cmd = cmd + run_id + suffix
+            self._run_in_thread(cmd, run_id)
+
         self.tmps = tmps
 
     def _run_in_thread(self, command, run_id):
@@ -268,6 +321,7 @@ class MultiRun_Module:
         while i < len(self.threads):
             if threading.active_count() - n_basic < self.n_thread:
                 self.threads[i].start()
+                time.sleep(1)               # avoid reading the compile_commands.json at the same time
                 print(f'    Starting thread {i}')
                 i += 1
                 interval = 0
@@ -330,7 +384,7 @@ class MultiRun_Module:
                 fdir = os.path.join(self.res_path, 'dats')
                 os.system(f'cp {csv} {fdir}')
 
-        # os.system(f'rm -r {self.tmp}')
+        os.system(f'mv {self.tmps} {self.res_path}')
 
 
     def visualize(self, run_id):
@@ -470,6 +524,7 @@ def test_config():
     mr = MultiRun_Module()
     mr.config_tag = ['test', 'test-spec']
     mr.id_param = 'runId'
+    mr.config_path = os.path.join(mr.config_path, 'test')
     mr.execute_configs()
     res = input(f'  -> are the configs correctly generated in {mr.config_path}/tmp? ')
     if 'y' in res:
@@ -512,13 +567,15 @@ if __name__ == "__main__":
     else:
         # check argument, print help info, pass
         if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-csv CSV] [-config-tag base_csv specific_csv] [-rebuild] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder] [-rebuild]")
+            print("                          [-csv CSV] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
             print("     -changedat      change mid in dat file name to run ID.")
             print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
             print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
+            print("     -config-folder subfolder      subfolder under edb_configs for config files.")
             print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
             exit(1)
         main()
