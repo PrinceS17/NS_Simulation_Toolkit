@@ -6,6 +6,7 @@ from threading import Thread
 import pandas as pd
 import seaborn as sns
 import time
+import numpy as np
 
 is_test = False
 
@@ -197,11 +198,22 @@ class MultiRun_Module:
 
             col, val = df_specific.columns[i], cur_row[i]
 
-            if type(val) != str or ('[' not in val and '{' not in val):
+            if type(val) != str or ('[' not in val and '{' not in val and '(' not in val):
                 return _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
 
-            # inflate the field to multiple values            
-            if ' ' in val:
+            # inflate the field to multiple values
+            if '(' in val:
+                # N(0,1) for Gaussian, U(0,1) for uniform
+                assert val[0] in ['N', 'U'], 'Distribution not supported.'
+                tmp = eval(val[1:].replace(' ', ','))
+                if val[0] == 'N':
+                    assert tmp[0] > 0, 'Mean must be positive.'
+                    vals = np.random.normal(tmp[0], tmp[1], 1)
+                    while vals[0] <= 0:
+                        vals = np.random.normal(tmp[0], tmp[1], 1)
+                elif val[0] == 'U':
+                    vals = np.random.uniform(tmp[0], tmp[1], 1)
+            elif ' ' in val:
                 vals = eval(val.replace(' ', ',').replace('{', '[').replace('}', ']'))
             elif '-' in val:
                 tmp = eval(val.replace('-', ',').replace('{', '[').replace('}', ']'))
@@ -248,6 +260,14 @@ class MultiRun_Module:
                     if i > 0:
                         increase_run = True
                     last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run,result)
+                cur_row[i] = val
+                return last_run
+            elif '(' in val:
+                if col in ['arrival_rate', 'mean_duration', 'pareto_index', 'hurst']:
+                    cur_row[i] = round(vals[0], 2)
+                else:
+                    cur_row[i] = int(vals[0])
+                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
                 cur_row[i] = val
                 return last_run
     
@@ -675,7 +695,7 @@ def main():
 
 # Note: script will overwrite the data file
 if __name__ == "__main__":
-    is_test = False     # test mode will disable the mrun command
+    is_test = True     # test mode will disable the mrun command
 
     if is_test:         # test cases here: intended tests all passed
         # test_parse()
