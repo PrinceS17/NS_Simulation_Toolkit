@@ -178,6 +178,10 @@ class MultiRun_Module:
                field group will be regarded as a single run only when it
                includes src/dst field, as otherwise there's no way to scan runs
                for several links.
+            5. Random field: support three types of distributions:
+                N(mean std): positive samples drawn from N(mean, std);
+                U(start end): unifrom distribution;
+                C(start end step): choice drawn from [start:end:step].
         """
         result_rows, row_idx = [], []
 
@@ -187,6 +191,29 @@ class MultiRun_Module:
             #              increase the run number in the end
             if i == len(cur_row):
                 cur_row_copy = cur_row.copy()
+
+                # Evaluate all random fields here, so that each row can get a different
+                # random value. (Othersize, if N(1,2) is before [3 4], then it draws 
+                # the sample first and then inflate [3 4].)
+                for j, val in enumerate(cur_row_copy):
+                    col = df_specific.columns[j]
+                    if type(val) != str or '(' not in val:
+                        continue
+                    assert val[0] in ['N', 'U', 'C'], 'Distribution not supported.'
+                    tmp = eval(val[1:].replace(' ', ','))
+                    if val[0] == 'N':
+                        assert tmp[0] > 0, 'Mean must be positive.'
+                        vals = np.random.normal(tmp[0], tmp[1], 1)
+                        while vals[0] <= 0:
+                            vals = np.random.normal(tmp[0], tmp[1], 1)
+                    elif val[0] == 'U':
+                        vals = np.random.uniform(tmp[0], tmp[1], 1)
+                    elif val[0] == 'C':
+                        vals = np.random.choice(list(range(tmp[0], tmp[1], tmp[2])), 1)
+                    if col in ['arrival_rate', 'mean_duration', 'pareto_index', 'hurst']:
+                        cur_row_copy[j] = round(vals[0], 2)
+                    else:
+                        cur_row_copy[j] = int(vals[0])
                 if cur_row.run != '*':
                     assert not increase_run
                     last_run = int(cur_row.run)
@@ -198,22 +225,11 @@ class MultiRun_Module:
 
             col, val = df_specific.columns[i], cur_row[i]
 
-            if type(val) != str or ('[' not in val and '{' not in val and '(' not in val):
+            if type(val) != str or ('[' not in val and '{' not in val):
                 return _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
 
             # inflate the field to multiple values
-            if '(' in val:
-                # N(0,1) for Gaussian, U(0,1) for uniform
-                assert val[0] in ['N', 'U'], 'Distribution not supported.'
-                tmp = eval(val[1:].replace(' ', ','))
-                if val[0] == 'N':
-                    assert tmp[0] > 0, 'Mean must be positive.'
-                    vals = np.random.normal(tmp[0], tmp[1], 1)
-                    while vals[0] <= 0:
-                        vals = np.random.normal(tmp[0], tmp[1], 1)
-                elif val[0] == 'U':
-                    vals = np.random.uniform(tmp[0], tmp[1], 1)
-            elif ' ' in val:
+            if ' ' in val:
                 vals = eval(val.replace(' ', ',').replace('{', '[').replace('}', ']'))
             elif '-' in val:
                 tmp = eval(val.replace('-', ',').replace('{', '[').replace('}', ']'))
@@ -233,6 +249,7 @@ class MultiRun_Module:
                     the later static field's value.
                     """
                     cur_row_copy = cur_row.copy()
+                    res_last_run = -1
                     for j_static, v in enumerate(vals):
                         # If it's in src or dst, we assume the run doesn't change.
                         # We need to keep run the same for the inflated row
@@ -242,12 +259,15 @@ class MultiRun_Module:
                         if col not in ['src', 'dst']:
                             increase_run = True
                             last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
+                            res_last_run = last_run
                         else:
-                            _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
-                            if j_static == len(vals) - 1:
-                                last_run += 1
+                            res_last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
+                            # The pure static field case: increase run at the end of all inflation,
+                            # otherwise last_run is not updated as it's fixed by us.
+                            if j_static == len(vals) - 1 and res_last_run == last_run:
+                                res_last_run += 1
                     cur_row = cur_row_copy
-                    return last_run
+                    return res_last_run
                 else:                       # the later static field
                     cur_row[i] = vals[j_static]
                     last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
@@ -262,43 +282,14 @@ class MultiRun_Module:
                     last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run,result)
                 cur_row[i] = val
                 return last_run
-            elif '(' in val:
-                if col in ['arrival_rate', 'mean_duration', 'pareto_index', 'hurst']:
-                    cur_row[i] = round(vals[0], 2)
-                else:
-                    cur_row[i] = int(vals[0])
-                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
-                cur_row[i] = val
-                return last_run
-    
+
         last_run, j_static, increase_run = -1, None, False
         for i_row, row in df_specific.iterrows():
             last_run = _dfs(row, 0, last_run, j_static, increase_run, result_rows)
-            
-            # if type(row.run) != str or '[' not in row.run or '{' not in row.run:
-            #     continue
-            # assert ']' in row.run
-            # row_idx.append(i)
-            # if ' ' in row.run:
-            #     runs = eval(row.run.replace(' ', ','))
-            # elif '-' in row.run:
-            #     tmp = eval(row.run.replace('-', ','))
-            #     runs = list(range(tmp[0], tmp[1] + 1))
-            # else:
-            #     runs = eval(row.run)
-            #     assert len(runs) == 1
-            
-            # # 
-            # for run in runs:
-            #     new_row = row.copy()
-            #     new_row.run = run
-            #     result_rows.append(new_row.tolist())
 
         result_df = pd.DataFrame(result_rows, columns=df_specific.columns)
         result_df['run'] = result_df.apply(lambda x: int(x['run']), axis=1)
         result_df = result_df.sort_values(['run', 'src', 'dst']).reset_index(drop=True)
-        # df_specific.drop(row_idx, inplace=True)
-        # df_specific = pd.concat([df_specific, result_df], ignore_index=True)
 
         if is_test:
             print(result_df)
@@ -692,7 +683,6 @@ def main():
     # print(' -- All figures stored ...')
     
 
-
 # Note: script will overwrite the data file
 if __name__ == "__main__":
     is_test = True     # test mode will disable the mrun command
@@ -742,6 +732,11 @@ if __name__ == "__main__":
                 - [a b]: inflates to [a, b]
                 - *: allows in run field, means automatically generate run No. based on static field row
             Replace [] with {} for static inflation.
+
+            Also, it supports three types of distributions:
+                N(mean std): positive samples drawn from N(mean, std);
+                U(start end): unifrom distribution;
+                C(start end step): choice drawn from [start:end:step].
 
             See _inflate_rows() in this script and edb_configs/test for more details.
             """)
