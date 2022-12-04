@@ -39,7 +39,7 @@ def inflate_rows(df_config, is_test):
                 col = df_config.columns[j]
                 if type(val) != str or '(' not in val:
                     continue
-                assert val[0] in ['N', 'U', 'C'], 'Distribution not supported.'
+                assert val[0] in ['N', 'U', 'C', 'L', 'P'], 'Distribution not supported.'
                 tmp = eval(val[1:].replace(' ', ','))
                 if val[0] == 'N':
                     assert tmp[0] > 0, 'Mean must be positive.'
@@ -47,9 +47,17 @@ def inflate_rows(df_config, is_test):
                     while vals[0] <= 0:
                         vals = np.random.normal(tmp[0], tmp[1], 1)
                 elif val[0] == 'U':
+                    assert tmp[0] > 0
                     vals = np.random.uniform(tmp[0], tmp[1], 1)
                 elif val[0] == 'C':
                     vals = np.random.choice(list(range(tmp[0], tmp[1], tmp[2])), 1)
+                elif val[0] == 'L':
+                    vals = np.random.lognormal(tmp[0], tmp[1], 1)
+                    while vals[0] <= 0:
+                        vals = np.random.lognormal(tmp[0], tmp[1], 1)
+                elif val[0] == 'P':    # Power law, P(scale, a/index)
+                    vals = tmp[0] * np.random.power(tmp[1], 1)
+                    vals = np.maximum(vals, 1)
                 if col in ['arrival_rate', 'mean_duration', 'pareto_index', 'hurst']:
                     cur_row_copy[j] = round(vals[0], 2)
                 else:
