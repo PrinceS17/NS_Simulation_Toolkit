@@ -57,7 +57,8 @@ class ConfigGenerator:
         self.group = {
             'n_btnk': n_btnk,
             'runs': [self.next_run, self.next_run + n_run - 1],     # inclusive
-            'run_str': f'[{self.next_run}-{self.next_run + n_run - 1}]',
+            'run_str': f'[{self.next_run}-{self.next_run + n_run - 1}]' if n_run > 1 \
+                else str(self.next_run),
             'leaves': [[], []],     # [src nodes, dst nodes]
             'leaf_gw': {},
             'gw_mid': [[], []],
@@ -111,11 +112,12 @@ class ConfigGenerator:
 
             for side in range(2):       # left / right
                 # leaf -> gw
+                n_leaf_to_use = n_leaf
                 if n_leaf is None:
-                    n_leaf = np.random.choice(range(2, max_leaf[side]))
-                leaf0, leaf1 = self._alloc_nodes(n_leaf)
+                    n_leaf_to_use = np.random.choice(range(2, max_leaf[side]))
+                leaf0, leaf1 = self._alloc_nodes(n_leaf_to_use)
                 gw, _ = self._alloc_nodes(1)
-                row = [run_str, f'[{leaf0}-{leaf1}]', str(gw), 'leaf', 'ppp',
+                row = [run_str, f'[{leaf0}-{leaf1}]', gw, 'leaf', 'ppp',
                     large_bw_str, small_delay_str, qsize_str, '{pie codel}', 'none']
                 cur_link_data.append(row)
                 self.group['leaves'][side].extend(range(leaf0, leaf1 + 1))
@@ -135,11 +137,11 @@ class ConfigGenerator:
                 self._add_gw_queue(gw)
 
         # mid left -> mid right
-        for left_mid in mids[0]:
-            for right_mid in mids[1]:
-                row = [run_str, str(left_mid), str(right_mid), 'mid', 'ppp', large_bw_str,
-                       large_delay_str, qsize_str, '{pie codel}', 'none']
-                cur_link_data.append(row)
+        left_mids = '[' + ' '.join(map(str, mids[0])) + ']'
+        right_mids = '[' + ' '.join(map(str, mids[1])) + ']'
+        row = [run_str, left_mids, right_mids, 'mid', 'ppp', large_bw_str,
+                large_delay_str, qsize_str, '{pie codel}', 'none']
+        cur_link_data.append(row)
 
         self.data['link'].extend(cur_link_data)
         res_df = pd.DataFrame(cur_link_data, columns=['run'] + self.col_map['link']) # for test
@@ -252,14 +254,13 @@ class ConfigGeneratorTest(unittest.TestCase):
             self.assertTrue(row.run == self.cgen.group['run_str'] and
                             row.type == 'ppp' and row.q_size == qsize_str and
                             row.q_type == '{pie codel}')
-            for j in [0, 1]:        # left or right
-                if row['src'] in leaves[j]:
-                    self.assertIn(row['dst'], gws[j])
-                    self.assertTrue(
-                        row.position == 'leaf' and row.q_monitor == 'none' and
-                        row.delay_ms == small_delay_str and
-                        row.bw_mbps == large_bw_str)
-            if row['src'] in gws[0] or row['dst'] in gws[1]:
+            if row.position == 'leaf':
+                self.assertTrue(row.dst in gws[0] or row.dst in gws[1])
+                self.assertTrue(
+                    row.position == 'leaf' and row.q_monitor == 'none' and
+                    row.delay_ms == small_delay_str and
+                    row.bw_mbps == large_bw_str)
+            elif row['src'] in gws[0] or row['dst'] in gws[1]:
                 if row['src'] in gws[0]:
                     self.assertIn(row['dst'], mids[0])
                     pos = 'left_mid'
@@ -270,10 +271,12 @@ class ConfigGeneratorTest(unittest.TestCase):
                     row.position == pos and row.q_monitor == 'tx' and
                     row.delay_ms == small_delay_str and
                     row.bw_mbps == small_bw_str)
-            if row['src'] in mids[0]:
-                self.assertIn(row['dst'], mids[1])
+            if row.position == 'mid':
+                src = '[' + ' '.join(map(str, mids[0])) + ']'
+                dst = '[' + ' '.join(map(str, mids[1])) + ']'
                 self.assertTrue(
-                    row.position == 'mid' and row.q_monitor == 'none' and
+                    row.src == src and row.dst == dst and
+                    row.q_monitor == 'none' and
                     row.delay_ms == large_delay_str and
                     row.bw_mbps == large_bw_str)
         print(link_df)
@@ -317,7 +320,7 @@ class ConfigGeneratorTest(unittest.TestCase):
         self.cgen.generate(btnk_groups=[10, 100], n_leaf=2)
         path = '../BBR_test/ns-3.27/edb_configs/cgen_test'
         lengths = {
-            'link': 10 * 4 + 100 + 100 * 4 + 10000,
+            'link': 10 * 4 + 1 + 100 * 4 + 1,
             'flow': 400 + 40000,
             'cross':20 + 200
         }
@@ -348,7 +351,7 @@ if __name__ == '__main__':
         'runs.')
     
     arg_grp = parser.add_mutually_exclusive_group(required=True)
-    parser.add_argument('--folder', '-f', type=str, default='config_gen',
+    parser.add_argument('--folder', '-f', type=str, default=None,
                         help='Folder to store configs')
     parser.add_argument('--tag', '-t', type=str, default='config_gen',
                         help='Tag for the config')
@@ -364,9 +367,12 @@ if __name__ == '__main__':
                         help='Run unittests')
     args = parser.parse_args()
 
+    if args.folder is None:
+        args.folder = args.tag
+
     if args.test:
         runner = unittest.TextTestRunner()
         runner.run(suite())
     else:
-        ctest = ConfigGenerator(args.folder, args.tag)
-        ctest.generate(args.btnk_group, args.n_run, args.start, args.end)
+        cgen = ConfigGenerator(args.folder, args.tag)
+        cgen.generate(args.btnk_group, args.n_run, args.start, args.end)
