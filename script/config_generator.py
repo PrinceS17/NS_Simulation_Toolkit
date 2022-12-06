@@ -208,12 +208,12 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_run_data, columns=['run'] + self.col_map['cross']) # for test
         return res_df
 
-    def generate(self, btnk_groups = [2, 6, 10, 14, 18, 22],
-                 n_leaf=None):
+    def generate(self, btnk_groups=[2, 6, 10, 14, 18, 22],
+                 n_run=10, sim_start=0.0, sim_end=600.0, n_leaf=None):
         for typ in self.col_map.keys():
             self.output_csv(typ, is_spec=False)
         for n_btnk in btnk_groups:
-            self.init_group(n_btnk)
+            self.init_group(n_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf)
             self.generate_flow()
             self.generate_cross()
@@ -314,9 +314,13 @@ class ConfigGeneratorTest(unittest.TestCase):
         # maybe this topology doesn't work for ns-3 due to 10000 links
         # in the middle and 200 * 200 flows...
         self.cgen = ConfigGenerator('cgen_test', 'inte')
-        self.cgen.generate(btnk_groups=[100], n_leaf=2)
+        self.cgen.generate(btnk_groups=[10, 100], n_leaf=2)
         path = '../BBR_test/ns-3.27/edb_configs/cgen_test'
-        lengths = {'link': 100 * 4 + 10000, 'flow': 40000, 'cross': 200}
+        lengths = {
+            'link': 10 * 4 + 100 + 100 * 4 + 10000,
+            'flow': 400 + 40000,
+            'cross':20 + 200
+        }
         for typ in ['link', 'flow', 'cross']:
             for csv in [f'inte_{typ}.csv', f'inte_spec_{typ}.csv']:
                 df = pd.read_csv(os.path.join(path, csv), index_col=False)
@@ -324,6 +328,8 @@ class ConfigGeneratorTest(unittest.TestCase):
                     self.assertTrue(df.empty)
                 else:
                     self.assertEqual(len(df), lengths[typ])
+                    last_run = df.iloc[-1].run
+                    self.assertEqual(last_run, f'[10-19]')
 
 def suite():
     suite = unittest.TestSuite()
@@ -334,17 +340,27 @@ def suite():
     return suite
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Config generator')
-    parser.add_argument('--folder', '-f', type=str,
-                        # required=True,
+    parser = argparse.ArgumentParser(description='Config generator'
+        'This tool generates config csvs supported by inflator, specifically '
+        'link, flow, cross config (not yet wifi config). Across all config, '
+        'the configs are grouped by the number of bottleneck links, and flow/cross '
+        'are generated based on the topology in each group. Each group contains several '
+        'runs.')
+    
+    arg_grp = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument('--folder', '-f', type=str, default='config_gen',
                         help='Folder to store configs')
-    parser.add_argument('--tag', '-t', type=str,
-                        # required=True,
+    parser.add_argument('--tag', '-t', type=str, default='config_gen',
                         help='Tag for the config')
-    parser.add_argument('--btnk_group', '-b', type=int, nargs='+',
-                        # required=True,
+    arg_grp.add_argument('--btnk_group', '-b', type=int, nargs='+',
                         help='Number of bottleneck links in each group')
-    parser.add_argument('--test', action='store_true', default=False,
+    parser.add_argument('--n_run', '-n', type=int, default=10,
+                        help='Number of runs in each group')
+    parser.add_argument('--start', '-s', type=float, default=0.0,
+                        help='Simulation start time (s)')
+    parser.add_argument('--end', '-e', type=float, default=600.0,
+                        help='Simulation end time (s)')
+    arg_grp.add_argument('--test', action='store_true', default=False,
                         help='Run unittests')
     args = parser.parse_args()
 
@@ -353,4 +369,4 @@ if __name__ == '__main__':
         runner.run(suite())
     else:
         ctest = ConfigGenerator(args.folder, args.tag)
-        ctest.generate(args.btnk_group)
+        ctest.generate(args.btnk_group, args.n_run, args.start, args.end)
