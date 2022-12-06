@@ -55,7 +55,7 @@ def inflate_rows(df_config, is_test):
                     vals = np.random.lognormal(tmp[0], tmp[1], 1)
                     while vals[0] <= 0:
                         vals = np.random.lognormal(tmp[0], tmp[1], 1)
-                elif val[0] == 'P':    # Power law, P(scale, a/index)
+                elif val[0] == 'P':    # Power law, P(scale, a i.e. index)
                     vals = tmp[0] * np.random.power(tmp[1], 1)
                     vals = np.maximum(vals, 1)
                 if col in ['arrival_rate', 'mean_duration', 'pareto_index', 'hurst']:
@@ -80,6 +80,18 @@ def inflate_rows(df_config, is_test):
         # TODO: evaluate the str field!
         #       support the qids in flow config
         assert val[0] in ['[', '{'] and val[-1] in [']', '}'], f'Invalid: {val}'
+
+        # Current compilation is still not satisfactory, and the most painful
+        # part is the (src,dst) must be specified by hand. The better way is
+        # to use the exact python list grammar in the field, so we can arbitrarily
+        # construct any large list there. And we only keep {} for static fields,
+        # and space for ',', as it's not allowed in csv.
+
+        # assert val[0] in ['[', '{'] and val[-1] in [']', '}'], f'Invalid: {val}'
+        # expr = val.replace(' ', ',').replace('{', '[').replace('}', ']')
+        
+        # in doubt: as range cannot be supported easily...
+
         if ' ' in val:
             tmp_vals = val[1:-1].split(' ')
             vals = list(map(int, tmp_vals)) if tmp_vals[0].isdigit() else tmp_vals

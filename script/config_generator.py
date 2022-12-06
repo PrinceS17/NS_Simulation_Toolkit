@@ -37,7 +37,7 @@ class ConfigGenerator:
         """
         self.folder = os.path.join(root, folder)
         if not os.path.exists(self.folder):
-            os.mkdir(self.folder)
+            os.makedirs(self.folder)
         self.tag = tag
         self.next_run = 0
         self.col_map = {
@@ -116,7 +116,7 @@ class ConfigGenerator:
                 leaf0, leaf1 = self._alloc_nodes(n_leaf)
                 gw, _ = self._alloc_nodes(1)
                 row = [run_str, f'[{leaf0}-{leaf1}]', str(gw), 'leaf', 'ppp',
-                    large_bw_str, small_delay_str, qsize_str, '{{pie codel}}', 'none']
+                    large_bw_str, small_delay_str, qsize_str, '{pie codel}', 'none']
                 cur_link_data.append(row)
                 self.group['leaves'][side].extend(range(leaf0, leaf1 + 1))
                 for leaf in range(leaf0, leaf1 + 1):
@@ -128,7 +128,7 @@ class ConfigGenerator:
                 pos = 'left_mid' if side == 0 else 'right_mid'
                 link = [gw, mid] if side == 0 else [mid, gw] 
                 row = [run_str, link[0], link[1], pos, 'ppp', small_bw_str,
-                       small_delay_str, qsize_str, '{{pie codel}}', 'tx']
+                       small_delay_str, qsize_str, '{pie codel}', 'tx']
                 cur_link_data.append(row)
                 self.group['gw_mid'][side].append(gw)   # ensure the correct traffic direction
                 self.group['gw_mid'][1 - side].append(mid)
@@ -138,11 +138,11 @@ class ConfigGenerator:
         for left_mid in mids[0]:
             for right_mid in mids[1]:
                 row = [run_str, str(left_mid), str(right_mid), 'mid', 'ppp', large_bw_str,
-                       large_delay_str, qsize_str, '{{pie codel}}', 'none']
+                       large_delay_str, qsize_str, '{pie codel}', 'none']
                 cur_link_data.append(row)
 
         self.data['link'].extend(cur_link_data)
-        res_df = pd.DataFrame(cur_link_data, columns=self.col_map['link']) # for test
+        res_df = pd.DataFrame(cur_link_data, columns=['run'] + self.col_map['link']) # for test
         return res_df
 
     def generate_flow(self, dynamic_window=180):
@@ -180,7 +180,7 @@ class ConfigGenerator:
                 cur_flow_data.append(row)
 
         self.data['flow'].extend(cur_flow_data)
-        res_df = pd.DataFrame(cur_flow_data, columns=self.col_map['flow']) # for test
+        res_df = pd.DataFrame(cur_flow_data, columns=['run'] + self.col_map['flow']) # for test
         return res_df
 
     def generate_cross(self):
@@ -205,7 +205,7 @@ class ConfigGenerator:
             cur_run_data.append(row)
         
         self.data['cross'].extend(cur_run_data)
-        res_df = pd.DataFrame(cur_run_data, columns=self.col_map['cross']) # for test
+        res_df = pd.DataFrame(cur_run_data, columns=['run'] + self.col_map['cross']) # for test
         return res_df
 
     def generate(self, btnk_groups = [2, 6, 10, 14, 18, 22],
@@ -223,7 +223,7 @@ class ConfigGenerator:
 class ConfigGeneratorTest(unittest.TestCase):
     def setUp(self) -> None:
         self.cgen = ConfigGenerator('cgen_test', 'cgen_test')
-        self.cgen.init_group([2])
+        self.cgen.init_group(2)
         return super().setUp()
     
     def test_generate_link(self):
@@ -235,8 +235,8 @@ class ConfigGeneratorTest(unittest.TestCase):
         gws = [set(map(lambda x: self.cgen.group['leaf_gw'][x],
             self.cgen.group['leaves'][i])) for i in range(2)]
         mids = [[], []]
-        for x, y in zip(self.cgen.group['gw_mid'],
-                        self.cgen.group['gw_mid']):
+        for x, y in zip(self.cgen.group['gw_mid'][0],
+                        self.cgen.group['gw_mid'][1]):
             if x in gws[0]:
                 mids[0].append(y)
             elif y in gws[1]:
@@ -251,49 +251,49 @@ class ConfigGeneratorTest(unittest.TestCase):
         for i, row in link_df.iterrows():
             self.assertTrue(row.run == self.cgen.group['run_str'] and
                             row.type == 'ppp' and row.q_size == qsize_str and
-                            row.q_type == '{{pie codel}}')
+                            row.q_type == '{pie codel}')
             for j in [0, 1]:        # left or right
                 if row['src'] in leaves[j]:
                     self.assertIn(row['dst'], gws[j])
                     self.assertTrue(
-                        row.pos == 'leaf' and row.q_monitor == 'none' and
-                        row.delay == small_delay_str and
-                        row.bw == large_bw_str)
+                        row.position == 'leaf' and row.q_monitor == 'none' and
+                        row.delay_ms == small_delay_str and
+                        row.bw_mbps == large_bw_str)
             if row['src'] in gws[0] or row['dst'] in gws[1]:
                 if row['src'] in gws[0]:
-                    self.assertIn(row['dst'], mids[1])
+                    self.assertIn(row['dst'], mids[0])
                     pos = 'left_mid'
                 else:
-                    self.assertIn(row['dst'], mids[0])
+                    self.assertIn(row['src'], mids[1])
                     pos = 'right_mid'
                 self.assertTrue(
-                    row.pos == pos and row.q_monitor == 'tx' and
-                    row.delay == small_delay_str and
-                    row.bw == small_bw_str)
+                    row.position == pos and row.q_monitor == 'tx' and
+                    row.delay_ms == small_delay_str and
+                    row.bw_mbps == small_bw_str)
             if row['src'] in mids[0]:
                 self.assertIn(row['dst'], mids[1])
                 self.assertTrue(
-                    row.pos == 'mid' and row.q_monitor == 'none' and
-                    row.delay == large_delay_str and
-                    row.bw == large_bw_str)
+                    row.position == 'mid' and row.q_monitor == 'none' and
+                    row.delay_ms == large_delay_str and
+                    row.bw_mbps == large_bw_str)
         print(link_df)
 
     def test_generate_flow(self):
         # 2 leaves per gw, 2 btnk, as typical
         self.cgen.generate_link(n_leaf=2)
         flow_df = self.cgen.generate_flow()
-        n_src = self.cgen.group['leaves'][0]
-        n_dst = self.cgen.group['leaves'][1]
+        n_src = len(self.cgen.group['leaves'][0])
+        n_dst = len(self.cgen.group['leaves'][1])
         self.assertEqual(len(flow_df), n_src * n_dst)
         gw_map = {0: 2, 1:2, 8:10, 9:10, 4:6, 5:6, 12:14, 13:14}
         i = 0
         res = []
         for src in [0, 1, 8, 9]:
             for dst in [4, 5, 12, 13]:
-                row = [src, dst, gw_map[src], gw_map[dst], 'P(50 0.44)',
+                row = ['[0-9]', src, dst, gw_map[src], gw_map[dst], 'P(50.0 0.44)',
                        'L(3 1.3225)', 2, 'U(0 180)', 'U(420 600)',
-                       src / 4, dst / 4]
-                self.assertTrue((flow_df[i] ==
+                       src // 4, dst // 4]
+                self.assertTrue((flow_df.iloc[i] ==
                     pd.Series(row, index=flow_df.columns)).all())
                 i += 1
         print(flow_df)
@@ -303,10 +303,10 @@ class ConfigGeneratorTest(unittest.TestCase):
         self.cgen.generate_flow()
         cross_df = self.cgen.generate_cross()
         for i, (src, dst) in enumerate(zip([2, 7, 10, 15], [3, 6, 11, 14])):
-            row = [self.cgen.group['run_str'], src, dst, 1, 'ppbp',
+            row = ['[0-9]', src, dst, 1, 'ppbp',
                     'C(100:100:1001)', 1000, 'U(0.5 0.9)', 'N(0.547 0.1)',
                     0, 600]
-            self.assertTrue((cross_df[i] ==
+            self.assertTrue((cross_df.iloc[i] ==
                 pd.Series(row, index=cross_df.columns)).all())
         print(cross_df)
 
@@ -316,30 +316,41 @@ class ConfigGeneratorTest(unittest.TestCase):
         self.cgen = ConfigGenerator('cgen_test', 'inte')
         self.cgen.generate(btnk_groups=[100], n_leaf=2)
         path = '../BBR_test/ns-3.27/edb_configs/cgen_test'
-        lengths = {'link': 100 * 5 + 10000, 'flow': 40000, 'cross': 200}
+        lengths = {'link': 100 * 4 + 10000, 'flow': 40000, 'cross': 200}
         for typ in ['link', 'flow', 'cross']:
-            for csv in [f'inte_{typ}.csv', f'inte_{typ}_spec.csv']:
+            for csv in [f'inte_{typ}.csv', f'inte_spec_{typ}.csv']:
                 df = pd.read_csv(os.path.join(path, csv), index_col=False)
                 if 'spec' not in csv:
                     self.assertTrue(df.empty)
                 else:
                     self.assertEqual(len(df), lengths[typ])
 
+def suite():
+    suite = unittest.TestSuite()
+    suite.addTest(ConfigGeneratorTest('test_generate_link'))
+    suite.addTest(ConfigGeneratorTest('test_generate_flow'))
+    suite.addTest(ConfigGeneratorTest('test_generate_cross'))
+    suite.addTest(ConfigGeneratorTest('test_files'))
+    return suite
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Config generator')
-    parser.add_argument('--folder', '-f', type=str, required=True,
+    parser.add_argument('--folder', '-f', type=str,
+                        # required=True,
                         help='Folder to store configs')
-    parser.add_argument('--tag', '-t', type=str, required=True,
+    parser.add_argument('--tag', '-t', type=str,
+                        # required=True,
                         help='Tag for the config')
-    parser.add_argument('--btnk_group', '-b', type=int, nargs='+', required=True,
+    parser.add_argument('--btnk_group', '-b', type=int, nargs='+',
+                        # required=True,
                         help='Number of bottleneck links in each group')
     parser.add_argument('--test', action='store_true', default=False,
                         help='Run unittests')
     args = parser.parse_args()
 
     if args.test:
-        ctest = ConfigGeneratorTest()
-        unittest.main()
+        runner = unittest.TextTestRunner()
+        runner.run(suite())
     else:
         ctest = ConfigGenerator(args.folder, args.tag)
         ctest.generate(args.btnk_group)
