@@ -103,6 +103,7 @@ class ConfigGenerator:
         run_str = self.group['run_str']
         small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.9 1.3225)'
         small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
+        qtype_str = 'C(pie codel)'
         qsize_str = 'C(100:100:1001)'              # TODO: queue's distribution
         mids = [[], []]     # [left_mids, right_mids]
         cur_link_data = []
@@ -118,7 +119,7 @@ class ConfigGenerator:
                 leaf0, leaf1 = self._alloc_nodes(n_leaf_to_use)
                 gw, _ = self._alloc_nodes(1)
                 row = [run_str, f'[{leaf0}-{leaf1}]', gw, 'leaf', 'ppp',
-                    large_bw_str, small_delay_str, qsize_str, '{pie codel}', 'none']
+                    large_bw_str, small_delay_str, qsize_str, qtype_str, 'none']
                 cur_link_data.append(row)
                 self.group['leaves'][side].extend(range(leaf0, leaf1 + 1))
                 for leaf in range(leaf0, leaf1 + 1):
@@ -130,7 +131,7 @@ class ConfigGenerator:
                 pos = 'left_mid' if side == 0 else 'right_mid'
                 link = [gw, mid] if side == 0 else [mid, gw] 
                 row = [run_str, link[0], link[1], pos, 'ppp', small_bw_str,
-                       small_delay_str, qsize_str, '{pie codel}', 'tx']
+                       small_delay_str, qsize_str, qtype_str, 'tx']
                 cur_link_data.append(row)
                 self.group['gw_mid'][side].append(gw)   # ensure the correct traffic direction
                 self.group['gw_mid'][1 - side].append(mid)
@@ -140,23 +141,26 @@ class ConfigGenerator:
         left_mids = '[' + ' '.join(map(str, mids[0])) + ']'
         right_mids = '[' + ' '.join(map(str, mids[1])) + ']'
         row = [run_str, left_mids, right_mids, 'mid', 'ppp', large_bw_str,
-                large_delay_str, qsize_str, '{pie codel}', 'none']
+                large_delay_str, qsize_str, qtype_str, 'none']
         cur_link_data.append(row)
 
         self.data['link'].extend(cur_link_data)
         res_df = pd.DataFrame(cur_link_data, columns=['run'] + self.col_map['link']) # for test
         return res_df
 
-    def generate_flow(self, dynamic_window=180):
+    def generate_flow(self, dynamic_ratio=0.33):
         """Generate flow configs.
 
-        Flow config: 'src', 'dst', 'src_gw', 'dst_gw', 'num', 'rate_mbps', 'delayed_ack',
-                    'start', 'end', 'q_index1', 'q_index2'.
+        Flow config: 'src', 'dst', 'src_gw', 'dst_gw', 'num', 'rate_mbps',
+                    'delayed_ack', 'start', 'end', 'q_index1', 'q_index2'.
 
         Args:
-            dynamic_window (int, optional): the window size for flow start and end.
+            dynamic_ratio (float, optional): the ratio of dynamic window to total
+                                             window size for flow start and end.
         """
         start, end = self.group['sim_start'], self.group['sim_end']
+        dynamic_window = (end - start) * dynamic_ratio
+        assert start >= 0 and end - dynamic_window >= 0
         run_str = self.group['run_str']
         rate_str = 'L(3 1.3225)'
         start_str = f'U({start} {start + dynamic_window})'
@@ -253,7 +257,7 @@ class ConfigGeneratorTest(unittest.TestCase):
         for i, row in link_df.iterrows():
             self.assertTrue(row.run == self.cgen.group['run_str'] and
                             row.type == 'ppp' and row.q_size == qsize_str and
-                            row.q_type == '{pie codel}')
+                            row.q_type == 'C(pie codel)')
             if row.position == 'leaf':
                 self.assertTrue(row.dst in gws[0] or row.dst in gws[1])
                 self.assertTrue(
@@ -359,6 +363,8 @@ if __name__ == '__main__':
                         help='Number of bottleneck links in each group')
     parser.add_argument('--n_run', '-n', type=int, default=10,
                         help='Number of runs in each group')
+    parser.add_argument('--n_leaf', '-l', type=int,
+                        help='Number of leaves per gateway')
     parser.add_argument('--start', '-s', type=float, default=0.0,
                         help='Simulation start time (s)')
     parser.add_argument('--end', '-e', type=float, default=600.0,
@@ -375,4 +381,4 @@ if __name__ == '__main__':
         runner.run(suite())
     else:
         cgen = ConfigGenerator(args.folder, args.tag)
-        cgen.generate(args.btnk_group, args.n_run, args.start, args.end)
+        cgen.generate(args.btnk_group, args.n_run, args.start, args.end, args.n_leaf)

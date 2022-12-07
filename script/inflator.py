@@ -40,17 +40,28 @@ def inflate_rows(df_config, is_test):
                 if type(val) != str or '(' not in val:
                     continue
                 assert val[0] in ['N', 'U', 'C', 'L', 'P'], 'Distribution not supported.'
-                tmp = eval(val[1:].replace(' ', ','))
+                tmp = ''
+                if ' ' in val[1:] and val[0] != 'C':
+                    tmp = eval(val[1:].replace(' ', ','))
                 if val[0] == 'N':
                     assert tmp[0] > 0, 'Mean must be positive.'
                     vals = np.random.normal(tmp[0], tmp[1], 1)
                     while vals[0] <= 0:
                         vals = np.random.normal(tmp[0], tmp[1], 1)
                 elif val[0] == 'U':
-                    assert tmp[0] > 0
+                    assert tmp[0] >= 0
                     vals = np.random.uniform(tmp[0], tmp[1], 1)
                 elif val[0] == 'C':
-                    vals = np.random.choice(list(range(tmp[0], tmp[1], tmp[2])), 1)
+                    tmp = val[2:-1].split(' ')
+                    if ' ' in val and not tmp[0].isdigit():
+                        candidates = tmp
+                    elif ':' in val[1:]:
+                        tmp = eval(val[1:].replace(':', ','))
+                        candidates = list(range(tmp[0], tmp[2], tmp[1]))
+                    else:
+                        tmp = eval(val[1:].replace(' ', ','))
+                        candidates = list(range(tmp[0], tmp[1], tmp[2]))
+                    vals = np.random.choice(candidates, 1)
                 elif val[0] == 'L':
                     vals = np.random.lognormal(tmp[0], tmp[1], 1)
                     while vals[0] <= 0:
@@ -58,10 +69,13 @@ def inflate_rows(df_config, is_test):
                 elif val[0] == 'P':    # Power law, P(scale, a i.e. index)
                     vals = tmp[0] * np.random.power(tmp[1], 1)
                     vals = np.maximum(vals, 1)
-                if col in ['arrival_rate', 'mean_duration', 'pareto_index', 'hurst']:
+                if col in ['arrival_rate', 'mean_duration', 'pareto_index',
+                    'hurst', 'delay_ms']:
                     cur_row_copy[j] = round(vals[0], 2)
+                elif type(vals[0]) in [np.str_, str]:
+                    cur_row_copy[j] = vals[0]
                 else:
-                    cur_row_copy[j] = int(vals[0])
+                    cur_row_copy[j] = int(np.ceil(vals[0]))
             if cur_row.run != '*':
                 # assert not increase_run
                 last_run = int(cur_row.run)
@@ -160,6 +174,7 @@ def inflate_rows(df_config, is_test):
     for i_row, row in df_config.iterrows():
         last_run = _dfs(row, 0, last_run, j_static, increase_run, result_rows)
     result_df = pd.DataFrame(result_rows, columns=df_config.columns)
+    print(result_df)
     result_df['run'] = result_df.apply(lambda x: int(x['run']), axis=1)
     result_df = result_df.sort_values(['run', 'src', 'dst']).reset_index(drop=True)
 

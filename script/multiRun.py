@@ -177,7 +177,8 @@ class MultiRun_Module:
             if config_type != 'wifi':
                 assert os.path.exists(base_csv)
                 df_base = pd.read_csv(base_csv, index_col=False, comment='#')
-                df_base = inflator.inflate_rows(df_base, is_test)
+                if not df_base.empty:
+                    df_base = inflator.inflate_rows(df_base, is_test)
             else:
                 # don't append any df, just skip wifi
                 continue
@@ -553,7 +554,7 @@ def main():
 
 # Note: script will overwrite the data file
 if __name__ == "__main__":
-    is_test = True     # test mode will disable the mrun command
+    is_test = False     # test mode will disable the mrun command
 
     if is_test:         # test cases here: intended tests all passed
         # test_parse()
