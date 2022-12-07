@@ -53,9 +53,9 @@ class ConfigGenerator:
             # self.data[typ] = {k: [] for k in ['run'] + cols}
             self.data[typ] = []
 
-    def init_group(self, n_btnk, n_run=10, sim_start=0, sim_end=600):
+    def init_group(self, n_left_btnk, n_right_btnk, n_run=10, sim_start=0, sim_end=600):
         self.group = {
-            'n_btnk': n_btnk,
+            'n_btnk': [n_left_btnk, n_right_btnk],
             'runs': [self.next_run, self.next_run + n_run - 1],     # inclusive
             'run_str': f'[{self.next_run}-{self.next_run + n_run - 1}]' if n_run > 1 \
                 else str(self.next_run),
@@ -107,11 +107,9 @@ class ConfigGenerator:
         qsize_str = 'C(100:100:1001)'              # TODO: queue's distribution
         mids = [[], []]     # [left_mids, right_mids]
         cur_link_data = []
-        for i in range(self.group['n_btnk']):
-            # TODO: this assumes n_left_btnk == n_right_btnk
-            #       extension: support != cases, and not loop side over each btnk
 
-            for side in range(2):       # left / right
+        for side in range(2):       # left / right
+            for i in range(self.group['n_btnk'][side]):
                 # leaf -> gw
                 n_leaf_to_use = n_leaf
                 if n_leaf is None:
@@ -131,7 +129,7 @@ class ConfigGenerator:
                 pos = 'left_mid' if side == 0 else 'right_mid'
                 link = [gw, mid] if side == 0 else [mid, gw] 
                 row = [run_str, link[0], link[1], pos, 'ppp', small_bw_str,
-                       small_delay_str, qsize_str, qtype_str, 'tx']
+                        small_delay_str, qsize_str, qtype_str, 'tx']
                 cur_link_data.append(row)
                 self.group['gw_mid'][side].append(gw)   # ensure the correct traffic direction
                 self.group['gw_mid'][1 - side].append(mid)
@@ -162,7 +160,7 @@ class ConfigGenerator:
         dynamic_window = (end - start) * dynamic_ratio
         assert start >= 0 and end - dynamic_window >= 0
         run_str = self.group['run_str']
-        rate_str = 'L(3 1.3225)'
+        rate_str = 'L(2.5 1.3225)'
         start_str = f'U({start} {start + dynamic_window})'
         end_str = f'U({end - dynamic_window} {end})'
         # From the literature, an edge src server has ~ 80 users at most.
@@ -214,22 +212,23 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_run_data, columns=['run'] + self.col_map['cross']) # for test
         return res_df
 
-    def generate(self, btnk_groups=[2, 6, 10, 14, 18, 22],
+    def generate(self, left_btnk_groups, right_btnk_groups,
                  n_run=10, sim_start=0.0, sim_end=600.0, n_leaf=None):
         for typ in self.col_map.keys():
             self.output_csv(typ, is_spec=False)
-        for n_btnk in btnk_groups:
-            self.init_group(n_btnk, n_run, sim_start, sim_end)
-            self.generate_link(n_leaf)
-            self.generate_flow()
-            self.generate_cross()
+        for n_left_btnk in left_btnk_groups:
+            for n_right_btnk in right_btnk_groups:
+                self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+                self.generate_link(n_leaf)
+                self.generate_flow()
+                self.generate_cross()
         for typ in self.col_map.keys():
             self.output_csv(typ, is_spec=True)
 
 class ConfigGeneratorTest(unittest.TestCase):
     def setUp(self) -> None:
         self.cgen = ConfigGenerator('cgen_test', 'cgen_test')
-        self.cgen.init_group(2)
+        self.cgen.init_group(2, 2)
         return super().setUp()
     
     def test_generate_link(self):
@@ -295,10 +294,10 @@ class ConfigGeneratorTest(unittest.TestCase):
         gw_map = {0: 2, 1:2, 8:10, 9:10, 4:6, 5:6, 12:14, 13:14}
         i = 0
         res = []
-        for src in [0, 1, 8, 9]:
-            for dst in [4, 5, 12, 13]:
+        for src in [0, 1, 4, 5]:
+            for dst in [8, 9, 12, 13]:
                 row = ['[0-9]', src, dst, gw_map[src], gw_map[dst], 'P(50.0 0.44)',
-                       'L(3 1.3225)', 2, 'U(0 180)', 'U(420 600)',
+                       'L(2.5 1.3225)', 2, 'U(0 198.0)', 'U(402.0 600)',
                        src // 4, dst // 4]
                 self.assertTrue((flow_df.iloc[i] ==
                     pd.Series(row, index=flow_df.columns)).all())
@@ -309,10 +308,12 @@ class ConfigGeneratorTest(unittest.TestCase):
         self.cgen.generate_link(n_leaf=2)
         self.cgen.generate_flow()
         cross_df = self.cgen.generate_cross()
-        for i, (src, dst) in enumerate(zip([2, 7, 10, 15], [3, 6, 11, 14])):
+        for i, (src, dst) in enumerate(zip([2, 6, 11, 15], [3, 7, 10, 14])):
             row = ['[0-9]', src, dst, 1, 'ppbp',
                     'C(100:100:1001)', 1000, 'U(0.5 0.9)', 'N(0.547 0.1)',
                     0, 600]
+            print(cross_df.iloc[i])
+            print(row)
             self.assertTrue((cross_df.iloc[i] ==
                 pd.Series(row, index=cross_df.columns)).all())
         print(cross_df)
@@ -321,12 +322,13 @@ class ConfigGeneratorTest(unittest.TestCase):
         # maybe this topology doesn't work for ns-3 due to 10000 links
         # in the middle and 200 * 200 flows...
         self.cgen = ConfigGenerator('cgen_test', 'inte')
-        self.cgen.generate(btnk_groups=[10, 100], n_leaf=2)
+        self.cgen.generate(left_btnk_groups=[10], right_btnk_groups=[10, 100],
+                           n_leaf=2)
         path = '../BBR_test/ns-3.27/edb_configs/cgen_test'
         lengths = {
-            'link': 10 * 4 + 1 + 100 * 4 + 1,
-            'flow': 400 + 40000,
-            'cross':20 + 200
+            'link': 10 * 4 + 1 + 100 * 2 + 20 + 1,
+            'flow': 400 + 4000,
+            'cross':20 + 110
         }
         for typ in ['link', 'flow', 'cross']:
             for csv in [f'inte_{typ}.csv', f'inte_spec_{typ}.csv']:
@@ -357,10 +359,12 @@ if __name__ == '__main__':
     arg_grp = parser.add_mutually_exclusive_group(required=True)
     parser.add_argument('--folder', '-f', type=str, default=None,
                         help='Folder to store configs')
-    parser.add_argument('--tag', '-t', type=str, default='config_gen',
+    arg_grp.add_argument('--tag', '-t', type=str, default='config_gen',
                         help='Tag for the config')
-    arg_grp.add_argument('--btnk_group', '-b', type=int, nargs='+',
-                        help='Number of bottleneck links in each group')
+    parser.add_argument('--left_btnk_group', '-lb', type=int, nargs='+',
+                        help='Number of left bottleneck links in each group')
+    parser.add_argument('--right_btnk_group', '-rb', type=int, nargs='+',
+                        help='Number of right bottleneck links in each group')
     parser.add_argument('--n_run', '-n', type=int, default=10,
                         help='Number of runs in each group')
     parser.add_argument('--n_leaf', '-l', type=int,
@@ -381,4 +385,5 @@ if __name__ == '__main__':
         runner.run(suite())
     else:
         cgen = ConfigGenerator(args.folder, args.tag)
-        cgen.generate(args.btnk_group, args.n_run, args.start, args.end, args.n_leaf)
+        cgen.generate(args.left_btnk_group, args.right_btnk_group, args.n_run,
+                      args.start, args.end, args.n_leaf)
