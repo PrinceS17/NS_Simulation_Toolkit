@@ -1,6 +1,12 @@
 import numpy as np
 import pandas as pd
 
+def choice_of_ytb_bitrate():
+    """Draws a bitrate from Youtube's bitrate distribution."""
+    bitrate = [0.08, 0.4, 1, 2.5, 5, 8, 10, 40]
+    p = np.array([4.9, 13.3, 23.7, 33.1, 18.15, 6.75, 0.05, 0.05]) / 100
+    return np.random.choice(bitrate, 1, p=p)
+
 def inflate_rows(df_config, is_test):
     """
     Inflate aggregated fields, i.e. broadcast the element in the 
@@ -39,7 +45,8 @@ def inflate_rows(df_config, is_test):
                 col = df_config.columns[j]
                 if type(val) != str or '(' not in val:
                     continue
-                assert val[0] in ['N', 'U', 'C', 'L', 'P'], 'Distribution not supported.'
+                assert val[0] in ['N', 'U', 'C', 'L', 'P', 'Y'], \
+                    'Distribution not supported.'
                 tmp = ''
                 if ' ' in val[1:] and val[0] != 'C':
                     tmp = eval(val[1:].replace(' ', ','))
@@ -69,8 +76,12 @@ def inflate_rows(df_config, is_test):
                 elif val[0] == 'P':    # Power law, P(scale, a i.e. index)
                     vals = tmp[0] * np.random.power(tmp[1], 1)
                     vals = np.maximum(vals, 1)
+                elif val[0] == 'Y':
+                    vals = choice_of_ytb_bitrate()
+
+                # field type processing
                 if col in ['arrival_rate', 'mean_duration', 'pareto_index',
-                    'hurst', 'delay_ms']:
+                    'hurst', 'delay_ms', 'cross_bw_ratio', 'rate_mbps']:
                     cur_row_copy[j] = round(vals[0], 2)
                 elif type(vals[0]) in [np.str_, str]:
                     cur_row_copy[j] = vals[0]

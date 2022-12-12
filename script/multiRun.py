@@ -566,26 +566,8 @@ if __name__ == "__main__":
         test_config()
     else:
         # check argument, print help info, pass
-        if len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder] [-rebuild]")
-            print("                          [-csv CSV] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
-            print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
-            print("     -crosson        include cross traffic.")
-            print("     -markon         add Co/NonCo in front of subfolder name.")
-            print("     -changedat      change mid in dat file name to run ID.")
-            print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
-            print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
-            print("     -config-folder subfolder      subfolder under edb_configs for config files.")
-            print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
-            print("""\n  For cbtnk-extended-db simulation, config csvs in config-folder is supported.
-            Typically link, flow, cross config csvs are supported, and each type consists of 
-            base and specific csvs. The specific csvs will be inflated to multiple runs and 
-            generate one config w/ base csv for each run.
-
-            A typical commands for cbtnk-extended-db simulation is:
-            
-              python3 multiRun.py -config-folder new_cross -config-tag ppbp ppbp_spec -rebuild -j6
-            
+        if len(sys.argv) == 1 and '-h' in sys.argv:
+            print("""
             There are two types of inflation: Cartesian product ([1 2]) and static ({1 2}).
             The Cartesian product will generate all combinations of the inflated list from
             multiple fields, and give each inflated row a new run; while the static inflation
@@ -609,5 +591,24 @@ if __name__ == "__main__":
 
             See inflate_rows() in this script and edb_configs/test for more details.
             """)
-            exit(1)
-        main()
+        elif len(sys.argv) < 3:
+            print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder] [-rebuild]")
+            print("                          [-csv CSV] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
+            print("     -crosson        include cross traffic.")
+            print("     -markon         add Co/NonCo in front of subfolder name.")
+            print("     -changedat      change mid in dat file name to run ID.")
+            print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
+            print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
+            print("     -config-folder subfolder      subfolder under edb_configs for config files.")
+            print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
+            print("\n  For cbtnk-extended-db simulation, config csvs in config-folder\n"
+            "  is supported. Typically link, flow, cross config csvs are supported, and\n"
+            "  each type consists of base and specific csvs. The specific csvs will be\n"
+            "  inflated to multiple runs and generate one config w/ base csv for each run.\n"
+            "  A typical commands for cbtnk-extended-db simulation is:\n\n"
+            
+            "  python3 multiRun.py -config-folder new_cross -config-tag ppbp ppbp_spec\n"
+            "     -rebuild -j6")
+        else:
+            main()

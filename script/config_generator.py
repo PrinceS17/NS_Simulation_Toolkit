@@ -45,7 +45,7 @@ class ConfigGenerator:
                      'q_size', 'q_type', 'q_monitor'],
             'flow': ['src', 'dst', 'src_gw', 'dst_gw', 'num', 'rate_mbps', 'delayed_ack',
                     'start', 'end', 'q_index1', 'q_index2'],
-            'cross': ['src', 'dst', 'num', 'mode', 'cross_rate_mbps', 'edge_rate_mbps',
+            'cross': ['src', 'dst', 'num', 'mode', 'cross_bw_ratio', 'edge_rate_mbps',
                     'hurst', 'mean_duration', 'start', 'end'],
         }
         self.data = {}
@@ -99,7 +99,7 @@ class ConfigGenerator:
         Link structure: left / right leaf, left / right btnk, middle links
         Nodes structure: leaf -> gw -> mid left -> mid right -> gw -> leaf
         """
-        max_leaf = [4, 7]           # server side smaller
+        max_leaf = [3, 5]           # server side smaller
         run_str = self.group['run_str']
         small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.9 1.3225)'
         small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
@@ -113,7 +113,7 @@ class ConfigGenerator:
                 # leaf -> gw
                 n_leaf_to_use = n_leaf
                 if n_leaf is None:
-                    n_leaf_to_use = np.random.choice(range(2, max_leaf[side]))
+                    n_leaf_to_use = np.random.choice(range(1, max_leaf[side]))
                 leaf0, leaf1 = self._alloc_nodes(n_leaf_to_use)
                 gw, _ = self._alloc_nodes(1)
                 row = [run_str, f'[{leaf0}-{leaf1}]', gw, 'leaf', 'ppp',
@@ -160,7 +160,8 @@ class ConfigGenerator:
         dynamic_window = (end - start) * dynamic_ratio
         assert start >= 0 and end - dynamic_window >= 0
         run_str = self.group['run_str']
-        rate_str = 'L(2.5 1.3225)'
+        # rate_str = 'L(2.5 1.3225)'
+        rate_str = 'Y()'        # the only predefined distribution: YouTube bitrate
         start_str = f'U({start} {start + dynamic_window})'
         end_str = f'U({end - dynamic_window} {end})'
         # From the literature, an edge src server has ~ 80 users at most.
@@ -190,13 +191,13 @@ class ConfigGenerator:
     def generate_cross(self):
         """Generate cross traffic configs.
 
-        Cross config: 'src', 'dst', 'num', 'mode', 'cross_rate_mbps', 'edge_rate_mbps',
+        Cross config: 'src', 'dst', 'num', 'mode', 'cross_bw_ratio', 'edge_rate_mbps',
                     'hurst', 'mean_duration', 'start', 'end'.
         """
         # TODO: cross traffic rate: cannot be relative to bw, as bw is not determined
         #       now! Ideally, it must be a ratio!
         run_str = self.group['run_str']
-        cross_rate_str = 'C(100:100:1001)'
+        cross_bw_ratio = 'U(0.05 0.95)'
         duration_str = 'N(0.547 0.1)'
         hurst_str = 'U(0.5 0.9)'
         start, end = self.group['sim_start'], self.group['sim_end']
@@ -204,7 +205,7 @@ class ConfigGenerator:
         for side in range(2):
             assert len(self.group['gw_mid'][side]) > 0
         for src, dst in zip(self.group['gw_mid'][0], self.group['gw_mid'][1]):
-            row = [run_str, src, dst, 1, 'ppbp', cross_rate_str, 1000, hurst_str,
+            row = [run_str, src, dst, 1, 'ppbp', cross_bw_ratio, 1000, hurst_str,
                 duration_str, start, end]
             cur_run_data.append(row)
         
@@ -310,10 +311,8 @@ class ConfigGeneratorTest(unittest.TestCase):
         cross_df = self.cgen.generate_cross()
         for i, (src, dst) in enumerate(zip([2, 6, 11, 15], [3, 7, 10, 14])):
             row = ['[0-9]', src, dst, 1, 'ppbp',
-                    'C(100:100:1001)', 1000, 'U(0.5 0.9)', 'N(0.547 0.1)',
+                    'U(0.05 0.95)', 1000, 'U(0.5 0.9)', 'N(0.547 0.1)',
                     0, 600]
-            print(cross_df.iloc[i])
-            print(row)
             self.assertTrue((cross_df.iloc[i] ==
                 pd.Series(row, index=cross_df.columns)).all())
         print(cross_df)
