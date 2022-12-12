@@ -65,6 +65,7 @@ class MultiRun_Module:
         not_number = False
         self.csv = None
         self.rebuild = False
+        self.overwrite_inflation = False
         for arg in args:
             if arg == '-crosson':
                 self.cross_on = True
@@ -87,6 +88,8 @@ class MultiRun_Module:
                 read_config_folder = True
             elif arg == '-rebuild':
                 self.rebuild = True
+            elif arg == '-overwrite-inflation':
+                self.overwrite_inflation = True
             elif '-j' in arg:
                 self.n_thread = int(arg[2:])
             elif read_program:
@@ -173,7 +176,7 @@ class MultiRun_Module:
         for config_type in self.config_types:
             base_csv = os.path.join(self.config_path, f'{self.config_tag[0]}_{config_type}.csv')
             specific_csv = os.path.join(self.config_path, f'{self.config_tag[1]}_{config_type}.csv')
-            print('base_csv', base_csv, '\nspecific_csv', specific_csv)
+            # print('base_csv', base_csv, '\nspecific_csv', specific_csv)
             if config_type != 'wifi':
                 assert os.path.exists(base_csv)
                 df_base = pd.read_csv(base_csv, index_col=False, comment='#')
@@ -189,16 +192,21 @@ class MultiRun_Module:
                 config_dfs[-1].append(df_base)
                 continue
 
-            df_specific = inflator.inflate_rows(df_specific, is_test)
-            path = os.path.join(self.config_path, f'{self.config_tag[0]}_{config_type}_inflated.csv')
-            df_specific.to_csv(path, index=False)
-            print(f'Inflated config csv saved to {path}')
+            # inflate specific config csv
+            inflated_csv = os.path.join(self.config_path, f'{self.config_tag[0]}_{config_type}_inflated.csv')
+            if os.path.exists(inflated_csv) and not self.overwrite_inflation:
+                df_inflated = pd.read_csv(inflated_csv, index_col=False, comment='#')
+                print(f'Inflated config csv loaded from {inflated_csv}')
+            else:
+                df_inflated = inflator.inflate_rows(df_specific, is_test)
+                df_inflated.to_csv(inflated_csv, index=False)
+                print(f'Inflated config csv saved to {inflated_csv}')
 
             # combine base df and specific run info into config df for each ns-3 run
-            for run in df_specific.run.unique():
+            for run in df_inflated.run.unique():
                 df = df_base.copy()
-                df_specific_run = df_specific[df_specific.run == run]
-                for _, row in df_specific_run.iterrows():
+                df_inflated_run = df_inflated[df_inflated.run == run]
+                for _, row in df_inflated_run.iterrows():
                     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst)].index
                     new_row = row.drop('run')
                     if not i_row.empty:
@@ -206,7 +214,7 @@ class MultiRun_Module:
                     assert (new_row.index == df.columns).all(), \
                         'Mismatched columns in spec and base configs!'
                     df = df.append(new_row, ignore_index=True)
-                    # for col in df_specific_run.columns:
+                    # for col in df_inflated_run.columns:
                     #     if col == 'run':
                     #         continue
                     #     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst), col]
@@ -592,8 +600,9 @@ if __name__ == "__main__":
             See inflate_rows() in this script and edb_configs/test for more details.
             """)
         elif len(sys.argv) < 3:
-            print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder] [-rebuild]")
-            print("                          [-csv CSV] [-crosson] [-markon] [-changedat] [-jN_THREAD]")
+            print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder]")
+            print("                          [-rebuild] [-overwrite_inflation] [-jN_THREAD]")
+            print("                          [-csv CSV] [-crosson] [-markon] [-changedat]")
             print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
             print("     -crosson        include cross traffic.")
             print("     -markon         add Co/NonCo in front of subfolder name.")
@@ -602,6 +611,7 @@ if __name__ == "__main__":
             print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
             print("     -config-folder subfolder      subfolder under edb_configs for config files.")
             print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
+            print("     -overwrite_inflation   overwrite inflation even when previous inflated csv exists.")
             print("\n  For cbtnk-extended-db simulation, config csvs in config-folder\n"
             "  is supported. Typically link, flow, cross config csvs are supported, and\n"
             "  each type consists of base and specific csvs. The specific csvs will be\n"
