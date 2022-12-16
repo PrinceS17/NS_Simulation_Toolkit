@@ -59,6 +59,7 @@ class MultiRun_Module:
         self.csv = None
         self.rebuild = False
         self.config_tag = []
+        self.dry_run = False
     
     def parse(self, args):
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
@@ -93,6 +94,8 @@ class MultiRun_Module:
                 self.rebuild = True
             elif arg == '-overwrite-inflation':
                 self.overwrite_inflation = True
+            elif arg == '-dry-run':
+                self.dry_run = True
             elif '-j' in arg:
                 self.n_thread = int(arg[2:])
             elif read_program:
@@ -183,6 +186,7 @@ class MultiRun_Module:
             if config_type != 'wifi':
                 assert os.path.exists(base_csv)
                 df_base = pd.read_csv(base_csv, index_col=False, comment='#')
+                assert 'run' not in df_base.columns, 'Switch base and specific csvs?'
                 if not df_base.empty:
                     df_base = inflator.inflate_rows(df_base, is_test)
             else:
@@ -273,7 +277,7 @@ class MultiRun_Module:
         self.tmps = tmps
 
     def _run_in_thread(self, command, run_id):
-        if not is_test:
+        if not is_test and not self.dry_run:
             print(f'  - Thread {len(self.threads)}: {command}')
             # os.system(command)
             t = Thread(target=self.run_cmd, args=(command,))
@@ -307,6 +311,10 @@ class MultiRun_Module:
         self.out.close()
         os.chdir(self.path)
 
+        if self.dry_run:
+            print(f'\n - Dry run, no multithreading.')
+            return
+
         # build first in serial to avoid conflicts
         if self.rebuild:
             os.system('CXXFLAGS="-Wall" ./waf configure --with-brite=../../BRITE --visualize > /dev/null')
@@ -315,17 +323,6 @@ class MultiRun_Module:
         # support multithreading
         t1 = time.time()
         print(f'\n - Begin multithreading with {self.n_thread} threads for {len(self.threads)} tasks in total')
-        # for i in range(math.ceil( len(self.threads) / self.n_thread)):
-        #     for mode in [0, 1]:
-        #         for j in range(self.n_thread):
-        #             n = i * self.n_thread + j
-        #             if n == len(self.threads):
-        #                 break
-        #             if not mode:
-        #                 self.threads[n].start()
-        #                 print(f'    Starting thread {n}')
-        #             else:
-        #                 self.threads[n].join()
 
         # use active_count to schedule a new thread ASAP to avoid wasting time!
         i = 0
@@ -367,6 +364,8 @@ class MultiRun_Module:
                 value.pop()
 
     def plot_all(self, show_flow=None):
+        if self.dry_run:
+            return
         for id, mid in self.run_map.items():
             csv = f'MboxStatistics/all-data_{mid}.csv'
             df = pd.read_csv(csv, index_col=False)
@@ -381,6 +380,8 @@ class MultiRun_Module:
                 plt.close()
     
     def collect_all(self):
+        if self.dry_run:
+            return
         if self.csv:
             os.system(f'cp {self.csv} {self.res_path}')
         if self.config_tag:
@@ -615,6 +616,7 @@ if __name__ == "__main__":
         print("     -config-folder subfolder      subfolder under edb_configs for config files.")
         print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
         print("     -overwrite_inflation   overwrite inflation even when previous inflated csv exists.")
+        print("     -dry-run        do all things except running ns-3.")
         print("\n  For cbtnk-extended-db simulation, config csvs in config-folder\n"
         "  is supported. Typically link, flow, cross config csvs are supported, and\n"
         "  each type consists of base and specific csvs. The specific csvs will be\n"
