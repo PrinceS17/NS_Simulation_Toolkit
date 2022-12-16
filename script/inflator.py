@@ -31,62 +31,61 @@ def inflate_rows(df_config, is_test):
             C(start end step): choice drawn from [start:end:step].
     """
 
+    def _draw_sample(col, val):
+        assert val[0] in ['N', 'U', 'C', 'L', 'P', 'Y'], \
+                'Distribution not supported.'
+        tmp = ''
+        if ' ' in val[1:] and val[0] != 'C':
+            tmp = eval(val[1:].replace(' ', ','))
+        if val[0] == 'N':
+            assert tmp[0] > 0, 'Mean must be positive.'
+            vals = np.random.normal(tmp[0], tmp[1], 1)
+            while vals[0] <= 0:
+                vals = np.random.normal(tmp[0], tmp[1], 1)
+        elif val[0] == 'U':
+            assert tmp[0] >= 0
+            vals = np.random.uniform(tmp[0], tmp[1], 1)
+        elif val[0] == 'C':
+            tmp = val[2:-1].split(' ')
+            if ' ' in val and not tmp[0].isdigit():
+                candidates = tmp
+            elif ':' in val[1:]:
+                tmp = eval(val[1:].replace(':', ','))
+                candidates = list(range(tmp[0], tmp[2], tmp[1]))
+            else:
+                tmp = eval(val[1:].replace(' ', ','))
+                candidates = list(range(tmp[0], tmp[1], tmp[2]))
+            vals = np.random.choice(candidates, 1)
+        elif val[0] == 'L':
+            vals = np.random.lognormal(tmp[0], tmp[1], 1)
+            while vals[0] <= 0:
+                vals = np.random.lognormal(tmp[0], tmp[1], 1)
+        elif val[0] == 'P':    # Power law, P(scale, a i.e. index)
+            vals = tmp[0] * np.random.power(tmp[1], 1)
+            vals = np.maximum(vals, 1)
+        elif val[0] == 'Y':
+            vals = choice_of_ytb_bitrate()
+
+        # field type processing
+        if col in ['arrival_rate', 'mean_duration', 'pareto_index',
+            'hurst', 'delay_ms', 'cross_bw_ratio', 'rate_mbps']:
+            return round(vals[0], 2)
+        elif type(vals[0]) in [np.str_, str]:
+            return vals[0]
+        else:
+            return int(np.ceil(vals[0]))
+
     def _dfs(cur_row, i, last_run, j_static, increase_run, result):
         # a recursion for row compilation
         # increase run: use by previous field to indicate if we want to
         #              increase the run number in the end
         if i == len(cur_row):
             cur_row_copy = cur_row.copy()
-
-            # Evaluate all random fields here, so that each row can get a different
-            # random value. (Othersize, if N(1,2) is before [3 4], then it draws 
-            # the sample first and then inflate [3 4].)
             for j, val in enumerate(cur_row_copy):
                 col = df_config.columns[j]
                 if type(val) != str or '(' not in val:
                     continue
-                assert val[0] in ['N', 'U', 'C', 'L', 'P', 'Y'], \
-                    'Distribution not supported.'
-                tmp = ''
-                if ' ' in val[1:] and val[0] != 'C':
-                    tmp = eval(val[1:].replace(' ', ','))
-                if val[0] == 'N':
-                    assert tmp[0] > 0, 'Mean must be positive.'
-                    vals = np.random.normal(tmp[0], tmp[1], 1)
-                    while vals[0] <= 0:
-                        vals = np.random.normal(tmp[0], tmp[1], 1)
-                elif val[0] == 'U':
-                    assert tmp[0] >= 0
-                    vals = np.random.uniform(tmp[0], tmp[1], 1)
-                elif val[0] == 'C':
-                    tmp = val[2:-1].split(' ')
-                    if ' ' in val and not tmp[0].isdigit():
-                        candidates = tmp
-                    elif ':' in val[1:]:
-                        tmp = eval(val[1:].replace(':', ','))
-                        candidates = list(range(tmp[0], tmp[2], tmp[1]))
-                    else:
-                        tmp = eval(val[1:].replace(' ', ','))
-                        candidates = list(range(tmp[0], tmp[1], tmp[2]))
-                    vals = np.random.choice(candidates, 1)
-                elif val[0] == 'L':
-                    vals = np.random.lognormal(tmp[0], tmp[1], 1)
-                    while vals[0] <= 0:
-                        vals = np.random.lognormal(tmp[0], tmp[1], 1)
-                elif val[0] == 'P':    # Power law, P(scale, a i.e. index)
-                    vals = tmp[0] * np.random.power(tmp[1], 1)
-                    vals = np.maximum(vals, 1)
-                elif val[0] == 'Y':
-                    vals = choice_of_ytb_bitrate()
-
-                # field type processing
-                if col in ['arrival_rate', 'mean_duration', 'pareto_index',
-                    'hurst', 'delay_ms', 'cross_bw_ratio', 'rate_mbps']:
-                    cur_row_copy[j] = round(vals[0], 2)
-                elif type(vals[0]) in [np.str_, str]:
-                    cur_row_copy[j] = vals[0]
-                else:
-                    cur_row_copy[j] = int(np.ceil(vals[0]))
+                cur_row_copy[j] = _draw_sample(col, val)
             if cur_row.run != '*':
                 # assert not increase_run
                 last_run = int(cur_row.run)
@@ -98,25 +97,32 @@ def inflate_rows(df_config, is_test):
 
         col, val = df_config.columns[i], cur_row[i]
 
+        # this breaks the rule that only str field gets inflated, so process first
+        if col == 'num':
+            # for simplicity, don't support nested inflation in 'num' field
+            # the sole use case should be random distribution here
+            if type(val) == str and not val.isdigit():
+                assert not ('[' in val or '{' in val)
+                assert '(' in val
+                num = _draw_sample(col, val)
+            else:
+                num = int(val)
+            for _ in range(num):
+                cur_row[i] = 1
+                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run,
+                                result)
+            cur_row[i] = val
+            return last_run
+
         if type(val) != str or ('[' not in val and '{' not in val):
             return _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
 
         # inflate the field to multiple values
-        # TODO: evaluate the str field!
-        #       support the qids in flow config
+
         assert val[0] in ['[', '{'] and val[-1] in [']', '}'], f'Invalid: {val}'
-
-        # Current compilation is still not satisfactory, and the most painful
-        # part is the (src,dst) must be specified by hand. The better way is
-        # to use the exact python list grammar in the field, so we can arbitrarily
-        # construct any large list there. And we only keep {} for static fields,
-        # and space for ',', as it's not allowed in csv.
-
-        # assert val[0] in ['[', '{'] and val[-1] in [']', '}'], f'Invalid: {val}'
-        # expr = val.replace(' ', ',').replace('{', '[').replace('}', ']')
-        
-        # in doubt: as range cannot be supported easily...
-
+        # Current compilation itself is not satisfactory, and the most painful
+        # part is the (src,dst) must be specified by hand. We are then combining
+        # it with the config_generator to do the trick.
         if ' ' in val:
             tmp_vals = val[1:-1].split(' ')
             vals = list(map(int, tmp_vals)) if tmp_vals[0].isdigit() else tmp_vals
@@ -148,10 +154,12 @@ def inflate_rows(df_config, is_test):
                     cur_row[i] = vals[j_static]
                     if col not in ['src', 'dst']:
                         increase_run = True
-                        last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
+                        last_run = _dfs(cur_row, i + 1, last_run, j_static,
+                                        increase_run, result)
                         res_last_run = last_run
                     else:
-                        res_last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
+                        res_last_run = _dfs(cur_row, i + 1, last_run, j_static,
+                                            increase_run, result)
                         # The pure static field case: increase run at the end of all inflation,
                         # otherwise last_run is not updated as it's fixed by us.
                         if j_static == len(vals) - 1 and res_last_run == last_run:
@@ -160,7 +168,8 @@ def inflate_rows(df_config, is_test):
                 return res_last_run
             else:                       # the later static field
                 cur_row[i] = vals[j_static]
-                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run, result)
+                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run,
+                                result)
                 cur_row[i] = val
                 return last_run
         elif '[' in val:
@@ -169,7 +178,8 @@ def inflate_rows(df_config, is_test):
                 cur_row[i] = v
                 if i > 0:
                     increase_run = True
-                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run,result)
+                last_run = _dfs(cur_row, i + 1, last_run, j_static, increase_run,
+                                result)
             cur_row[i] = val
             return last_run
 
