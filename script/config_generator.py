@@ -1,7 +1,9 @@
 import argparse
+import itertools
 import numpy as np
 import os
 import pandas as pd
+import sys
 import unittest
 
 class ConfigGenerator:
@@ -90,6 +92,13 @@ class ConfigGenerator:
             df = pd.DataFrame(self.data[typ], columns=['run'] + self.col_map[typ])
         df.to_csv(csv, index=False)
         print(f'Output csv: {csv}')
+    
+    def output_cmd(self):
+        cmd = ' '.join(['python3'] + sys.argv)
+        cmd_txt = os.path.join(self.folder, f'{self.tag}_cmd.txt')
+        with open(cmd_txt, 'w') as f:
+            f.write(cmd)
+        print(f'Output cmd: {cmd_txt}')
 
     def generate_link(self, n_leaf=None):
         """Generate link config csv based on the number of bottleneck links.
@@ -213,18 +222,25 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_run_data, columns=['run'] + self.col_map['cross']) # for test
         return res_df
 
-    def generate(self, left_btnk_groups, right_btnk_groups,
+    def generate(self, left_btnk_groups, right_btnk_groups, match_btnk=False,
                  n_run=10, sim_start=0.0, sim_end=600.0, n_leaf=None):
         for typ in self.col_map.keys():
             self.output_csv(typ, is_spec=False)
-        for n_left_btnk in left_btnk_groups:
-            for n_right_btnk in right_btnk_groups:
-                self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
-                self.generate_link(n_leaf)
-                self.generate_flow()
-                self.generate_cross()
+        btnk_grp = None
+        if match_btnk:
+            assert len(left_btnk_groups) == len(right_btnk_groups)
+            btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        else:
+            btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+
+        for n_left_btnk, n_right_btnk in btnk_grp:
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(n_leaf)
+            self.generate_flow()
+            self.generate_cross()
         for typ in self.col_map.keys():
             self.output_csv(typ, is_spec=True)
+        self.output_cmd()
 
 class ConfigGeneratorTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -364,6 +380,8 @@ if __name__ == '__main__':
                         help='Number of left bottleneck links in each group')
     parser.add_argument('--right_btnk_group', '-rb', type=int, nargs='+',
                         help='Number of right bottleneck links in each group')
+    parser.add_argument('--match_btnk', '-m', action='store_true', default=False,
+                        help='Match the number of bottlenecks in left/right group')
     parser.add_argument('--n_run', '-n', type=int, default=10,
                         help='Number of runs in each group')
     parser.add_argument('--n_leaf', '-l', type=int,
@@ -384,5 +402,5 @@ if __name__ == '__main__':
         runner.run(suite())
     else:
         cgen = ConfigGenerator(args.folder, args.tag)
-        cgen.generate(args.left_btnk_group, args.right_btnk_group, args.n_run,
-                      args.start, args.end, args.n_leaf)
+        cgen.generate(args.left_btnk_group, args.right_btnk_group, args.match_btnk,
+                      args.n_run, args.start, args.end, args.n_leaf)
