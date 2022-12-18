@@ -47,20 +47,24 @@ class MultiRun_Module:
         except:
             print('ns-3 not installed yet!')
 
-        subdir = 'results_' + time.strftime('%b-%d-%H:%M:%S') + str(random.randint(0, 100))
-        os.mkdir(subdir)
-        os.mkdir(os.path.join(subdir, 'logs'))
-        self.out = open(os.path.join(subdir, 'logs', 'run_log.txt'), 'w')
-        os.mkdir(os.path.join(subdir, 'figs'))
-        os.mkdir(os.path.join(subdir, 'dats'))
-        self.res_path = os.path.join(self.path, subdir)
-
         self.overwrite_inflation = False
         self.csv = None
         self.rebuild = False
         self.config_tag = []
         self.dry_run = False
     
+    def _set_folder(self, tag):
+        subdir = f'results_{tag}_' + time.strftime('%b-%d-%H:%M:%S') + \
+            str(random.randint(0, 100))
+        os.mkdir(subdir)
+        os.mkdir(os.path.join(subdir, 'logs'))
+        self.out = open(os.path.join(subdir, 'logs', 'run_log.txt'), 'w')
+        os.mkdir(os.path.join(subdir, 'figs'))
+        os.mkdir(os.path.join(subdir, 'dats'))
+        os.mkdir(os.path.join(subdir, 'cfgs'))
+        self.res_path = os.path.join(self.path, subdir)
+        self.cfg_out_path = os.path.join(self.res_path, 'cfgs')
+
     def parse(self, args):
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
         read_program = False
@@ -129,6 +133,7 @@ class MultiRun_Module:
             else:
                 print('Error: parameters must be followed by a range!')
                 exit(1)
+        self._set_folder(self.config_tag[0])
 
     def mark(self, name, value):
         ''' Mark each run with Co or NonCo. '''
@@ -200,7 +205,7 @@ class MultiRun_Module:
                 continue
 
             # inflate specific config csv
-            inflated_csv = os.path.join(self.config_path, f'{self.config_tag[0]}_{config_type}_inflated.csv')
+            inflated_csv = os.path.join(self.cfg_out_path, f'{self.config_tag[0]}_{config_type}_inflated.csv')
             if os.path.exists(inflated_csv) and not self.overwrite_inflation:
                 df_inflated = pd.read_csv(inflated_csv, index_col=False, comment='#')
                 print(f'Inflated config csv loaded from {inflated_csv}')
@@ -239,7 +244,7 @@ class MultiRun_Module:
         if len(config_dfs) < 4:
             assert len(config_dfs) == 3
             self.config_types = self.config_types[:len(config_dfs)]
-        tmps = os.path.join(self.config_path, 'tmps')
+        tmps = os.path.join(self.cfg_out_path, 'tmps')
         if not os.path.exists(tmps):
             os.mkdir(tmps)
         os.chdir(tmps)
@@ -397,7 +402,8 @@ class MultiRun_Module:
                 fdir = os.path.join(self.res_path, 'dats')
                 os.system(f'cp {csv} {fdir}')
 
-        os.system(f'mv {self.tmps} {self.res_path}')
+        # use cfg_out_path now, no need to mv
+        # os.system(f'mv {self.tmps} {self.res_path}')
 
 
     def visualize(self, run_id):
