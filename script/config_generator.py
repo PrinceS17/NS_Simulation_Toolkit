@@ -94,31 +94,57 @@ class ConfigGenerator:
         print(f'Output csv: {csv}')
     
     def output_cmd(self):
-        cmd = ' '.join(['python3'] + sys.argv)
+        cmd = ' '.join(['python3'] + sys.argv) + '\n'
         cmd_txt = os.path.join(self.folder, f'{self.tag}_cmd.txt')
         with open(cmd_txt, 'w') as f:
             f.write(cmd)
         print(f'Output cmd: {cmd_txt}')
 
-    def generate_link(self, n_leaf=None):
+    def generate_link(self, n_leaf=None, link_str_info={}):
         """Generate link config csv based on the number of bottleneck links.
         Link config columns: 'src', 'dst', 'position', 'type', 'bw_mbps',
             'delay_ms', 'q_size', 'q_type', 'q_monitor'.
 
         Link structure: left / right leaf, left / right btnk, middle links
         Nodes structure: leaf -> gw -> mid left -> mid right -> gw -> leaf
+
+        link_str_info contains the info for bw and delay. Note that the user can
+        choose only update bw or delay, but within each type, he/she needs to
+        set all the fields clearly.
         """
         max_leaf = [3, 5]           # server side smaller
         run_str = self.group['run_str']
-        small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.9 1.3225)'
-        small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
         qtype_str = 'C(pie codel)'
         qsize_str = 'C(100:100:1001)'              # TODO: queue's distribution
         mids = [[], []]     # [left_mids, right_mids]
         cur_link_data = []
 
+        # BW: side x btnk index, delay: side x leaf index(only leaf allowed for delay)
+        small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.9 1.3225)'
+        small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
+        cur_link_str_info = {
+            'bw': [[small_bw_str for _ in range(self.group['n_btnk'][side])]
+                    for side in range(2)],
+            'delay': [[small_delay_str for _ in range(self.group['n_btnk'][side])]
+                    for side in range(2)],
+        }
+        # if provided '' or None, fill the default value
+        # no format check as the user is internal, just let it crash
+        for k in link_str_info:
+            for side in [0, 1]:
+                for i in range(len(link_str_info[k][side])):
+                    if link_str_info[k][side][i]:
+                        continue
+                    link_str_info[k][side][i] = small_bw_str if k == 'bw' \
+                        else small_delay_str
+        cur_link_str_info.update(link_str_info)
+
+        # set the configs for leaf and left/right btnk
         for side in range(2):       # left / right
             for i in range(self.group['n_btnk'][side]):
+                leaf_delay_str = cur_link_str_info['delay'][side][i]
+                btnk_bw_str = cur_link_str_info['bw'][side][i]
+                
                 # leaf -> gw
                 n_leaf_to_use = n_leaf
                 if n_leaf is None:
@@ -126,7 +152,7 @@ class ConfigGenerator:
                 leaf0, leaf1 = self._alloc_nodes(n_leaf_to_use)
                 gw, _ = self._alloc_nodes(1)
                 row = [run_str, f'[{leaf0}-{leaf1}]', gw, 'leaf', 'ppp',
-                    large_bw_str, small_delay_str, qsize_str, qtype_str, 'none']
+                    large_bw_str, leaf_delay_str, qsize_str, qtype_str, 'none']
                 cur_link_data.append(row)
                 self.group['leaves'][side].extend(range(leaf0, leaf1 + 1))
                 for leaf in range(leaf0, leaf1 + 1):
@@ -137,7 +163,7 @@ class ConfigGenerator:
                 mids[side].append(mid)
                 pos = 'left_mid' if side == 0 else 'right_mid'
                 link = [gw, mid] if side == 0 else [mid, gw] 
-                row = [run_str, link[0], link[1], pos, 'ppp', small_bw_str,
+                row = [run_str, link[0], link[1], pos, 'ppp', btnk_bw_str,
                         small_delay_str, qsize_str, qtype_str, 'tx']
                 cur_link_data.append(row)
                 self.group['gw_mid'][side].append(gw)   # ensure the correct traffic direction
@@ -155,11 +181,14 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_link_data, columns=['run'] + self.col_map['link']) # for test
         return res_df
 
-    def generate_flow(self, dynamic_ratio=0.33):
+    def generate_flow(self, dynamic_ratio=0.33, rate_str=None, num_str=None,
+                      start_str=None, end_str=None, n_total_users=None):
         """Generate flow configs.
 
         Flow config: 'src', 'dst', 'src_gw', 'dst_gw', 'num', 'rate_mbps',
                     'delayed_ack', 'start', 'end', 'q_index1', 'q_index2'.
+        
+        Y() means the only predefined distribution: YouTube bitrate
 
         Args:
             dynamic_ratio (float, optional): the ratio of dynamic window to total
@@ -170,9 +199,11 @@ class ConfigGenerator:
         assert start >= 0 and end - dynamic_window >= 0
         run_str = self.group['run_str']
         # rate_str = 'L(2.5 1.3225)'
-        rate_str = 'Y()'        # the only predefined distribution: YouTube bitrate
-        start_str = f'U({start} {start + dynamic_window})'
-        end_str = f'U({end - dynamic_window} {end})'
+        rate_str = 'Y()' if not rate_str else rate_str
+        if start_str is None:
+            start_str = f'U({start} {start + dynamic_window})'
+        if end_str is None:
+            end_str = f'U({end - dynamic_window} {end})'
         # From the literature, an edge src server has ~ 80 users at most.
         # We divide it by the number of dst to compute the number of users for each src
         # server, and obtain the power law for user number here.
@@ -180,8 +211,10 @@ class ConfigGenerator:
         # TODO: the understanding of the figure seems wrong
         #       80 users have 1 servers doesn't mean 1 servers only have 80 users!
         #       80 is too less for an edge server, set to 200 for now
-        user_per_dst = 200 / len(self.group["leaves"][1])
-        num_str = f'P({user_per_dst} 0.44)'
+        n_total_users = 200 if n_total_users is None else n_total_users
+        if num_str is None:
+            user_per_dst = n_total_users / len(self.group["leaves"][1])
+            num_str = f'P({user_per_dst} 0.44)'
         cur_flow_data = []
         for side in range(2):
             assert len(self.group['leaves'][side]) > 0
@@ -197,7 +230,7 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_flow_data, columns=['run'] + self.col_map['flow']) # for test
         return res_df
 
-    def generate_cross(self):
+    def generate_cross(self, cross_bw_ratio=None):
         """Generate cross traffic configs.
 
         Cross config: 'src', 'dst', 'num', 'mode', 'cross_bw_ratio', 'edge_rate_mbps',
@@ -205,11 +238,11 @@ class ConfigGenerator:
         """
         # TODO: cross traffic rate: cannot be relative to bw, as bw is not determined
         #       now! Ideally, it must be a ratio!
-        run_str = self.group['run_str']
-        cross_bw_ratio = 'U(0.05 0.95)'
+        run_str = self.group['run_str']        
         duration_str = 'N(0.547 0.1)'
         hurst_str = 'U(0.5 0.9)'
         start, end = self.group['sim_start'], self.group['sim_end']
+        cross_bw_ratio = 'U(0.05 0.95)' if not cross_bw_ratio else cross_bw_ratio
         cur_run_data = []
         for side in range(2):
             assert len(self.group['gw_mid'][side]) > 0
@@ -222,25 +255,107 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_run_data, columns=['run'] + self.col_map['cross']) # for test
         return res_df
 
+    def record_output(func):
+        def wrapper(self, *args, **kwargs):
+            for typ in self.col_map.keys():
+                self.output_csv(typ, is_spec=False)
+            func(self, *args, **kwargs)
+            for typ in self.col_map.keys():
+                self.output_csv(typ, is_spec=True)
+            self.output_cmd()
+        return wrapper
+
+    @record_output
     def generate(self, left_btnk_groups, right_btnk_groups, match_btnk=False,
-                 n_run=10, sim_start=0.0, sim_end=600.0, n_leaf=None):
-        for typ in self.col_map.keys():
-            self.output_csv(typ, is_spec=False)
+                 n_run=10, sim_start=0.0, sim_end=60.0, n_leaf=None):
         btnk_grp = None
         if match_btnk:
             assert len(left_btnk_groups) == len(right_btnk_groups)
             btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         else:
             btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
-
-        for n_left_btnk, n_right_btnk in btnk_grp:
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf)
             self.generate_flow()
             self.generate_cross()
-        for typ in self.col_map.keys():
-            self.output_csv(typ, is_spec=True)
-        self.output_cmd()
+    
+    @record_output
+    def generate_one_to_n(self, n_run=4, sim_start=0.0, sim_end=60.0, n_leaf=None):
+        """One to N topology for basic test set.
+        """
+        left_btnk_groups, right_btnk_groups = [1], [4, 6, 8]
+        btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['C(300:100:501)'], [''] * n_right_btnk]}
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(n_leaf, link_str_info=link_str_info)
+            self.generate_flow()
+            self.generate_cross(cross_bw_ratio='U(0.5 0.9)')
+
+    @record_output
+    def generate_path_lag_scan(self, n_run=4, sim_start=0.0, sim_end=60.0):
+        """Generate path lag test set using 2x2 architecture.
+        """
+        n_leaf = 1
+        left_btnk_groups, right_btnk_groups = [2] * 6, [2] * 6
+        btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {
+                'bw': [['N(200 5)'] * 2, [''] * 2],
+                'delay': [[''] * 2, ['10', f'N({(i + 1) * 20} 3)']]
+            }
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(n_leaf, link_str_info=link_str_info)
+            self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(10 1)')
+            self.generate_cross(cross_bw_ratio='U(0.5 0.6)')
+
+    @record_output
+    def generate_cross_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
+                                 n_leaf=None):
+        """Generate cross load test set using 1 to 6 topology.
+        """
+        left_btnk_groups, right_btnk_groups = [1], [6] * 5
+        btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['N(300 5)'], [''] * 6]}
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(n_leaf, link_str_info=link_str_info)
+            self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(10 1)')
+            self.generate_cross(cross_bw_ratio=0.1 + i * 0.2)
+
+    @record_output
+    def generate_large_flow_num(self, n_run=4, sim_start=0.0, sim_end=60.0):
+        """Generate large number of flow test set.
+        Scenario: right btnk, run 1~4 w/ 2 btnks, run 5~8 w/ 6 btnks.
+        Within each group, scan the number of flows.
+        """
+        left_btnk_groups, right_btnk_groups = [2] * 3, [6] * 3
+        btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        n_user_choice = [400, 600, 800]
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['N(1000 5)'] * n_left_btnk,
+                            ['C(100:100:301)'] * n_right_btnk]}
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(link_str_info=link_str_info)
+            self.generate_flow(n_total_users=n_user_choice[i % 3])
+            self.generate_cross(cross_bw_ratio='U(0.3 0.7)')   # then left btnk > 300M
+
+    @record_output
+    def generate_para_btnk(self, n_run=4, sim_start=0.0, sim_end=60.0):
+        """Generate parallel btnk test set.
+        Scenario: scan the number of the right btnks.
+        """
+        left_btnk_groups, right_btnk_groups = [2] * 4, [4, 8, 12, 16]
+        btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['N(1000 5)'] * n_left_btnk,
+                             ['C(100:100:301)'] * n_right_btnk]}
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(link_str_info=link_str_info)
+            self.generate_flow(n_total_users=400)
+            self.generate_cross(cross_bw_ratio='U(0.3 0.7)')
+
 
 class ConfigGeneratorTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -376,6 +491,10 @@ if __name__ == '__main__':
                         help='Folder to store configs')
     arg_grp.add_argument('--tag', '-t', type=str, default='config_gen',
                         help='Tag for the config')
+    parser.add_argument('--profile', '-p', type=str, default='',
+                        choices=['', 'one-to-n', 'path-lag', 'load-scan',
+                        'large-flow', 'para-btnk'],
+                        help='Profile for the config generation')
     parser.add_argument('--left_btnk_group', '-lb', type=int, nargs='+',
                         help='Number of left bottleneck links in each group')
     parser.add_argument('--right_btnk_group', '-rb', type=int, nargs='+',
@@ -400,7 +519,19 @@ if __name__ == '__main__':
     if args.test:
         runner = unittest.TextTestRunner()
         runner.run(suite())
-    else:
-        cgen = ConfigGenerator(args.folder, args.tag)
+        exit(0)
+
+    cgen = ConfigGenerator(args.folder, args.tag)
+    if not args.profile:    
         cgen.generate(args.left_btnk_group, args.right_btnk_group, args.match_btnk,
                       args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile == 'one-to-n':
+        cgen.generate_one_to_n(args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile == 'path-lag':
+        cgen.generate_path_lag_scan(args.n_run, args.start, args.end)
+    elif args.profile == 'load-scan':
+        cgen.generate_cross_load_scan(args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile == 'large-flow':
+        cgen.generate_large_flow_num(args.n_run, args.start, args.end)
+    elif args.profile == 'para-btnk':
+        cgen.generate_para_btnk(args.n_run, args.start, args.end)
