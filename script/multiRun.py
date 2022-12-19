@@ -52,6 +52,7 @@ class MultiRun_Module:
         self.rebuild = False
         self.config_tag = []
         self.dry_run = False
+        self.thread_duration = []
     
     def _set_folder(self, tag):
         subdir = f'results_{tag}_' + time.strftime('%b-%d-%H:%M:%S') + \
@@ -144,9 +145,18 @@ class MultiRun_Module:
         self.co_map[run_id] = True if has_co == 'y' else False
         return has_co
 
-    def run_cmd(self, cmd):
-        ''' Mainly for threading.'''
+    def run_cmd(self, cmd, t_idx):
+        ''' Mainly for threading. Note that thread_time doesn't work as the
+        os.system() command duration is not recorded.
+        '''
+        t1 = time.time()
+        t1_str = time.strftime('%b-%d-%H:%M:%S')
+        print(f'  Thread {t_idx} starts at {t1_str} s')
         os.system(cmd)
+        t2 = time.time()
+        t2_str = time.strftime('%b-%d-%H:%M:%S')
+        print(f'  Thread {t_idx} ends at {t2_str} s, duration: {t2 - t1:.3f} s')
+        self.thread_duration[t_idx] = t2 - t1
 
     def execute(self, name, value):
         ''' Execute a parameter given its name and range in the form of (min, max, step). '''
@@ -277,15 +287,16 @@ class MultiRun_Module:
             suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
             self.run_map[run_id] = self.mid
             cmd = cmd + run_id + suffix
-            self._run_in_thread(cmd, run_id)
+            self._run_in_thread(cmd, run_id, i)
 
         self.tmps = tmps
 
-    def _run_in_thread(self, command, run_id):
+    def _run_in_thread(self, command, run_id, t_idx=-1):
+        self.thread_duration.append(0)
         if not is_test and not self.dry_run:
             print(f'  - Thread {len(self.threads)}: {command}')
             # os.system(command)
-            t = Thread(target=self.run_cmd, args=(command,))
+            t = Thread(target=self.run_cmd, args=(command, t_idx))
             self.threads.append(t)
 
         print('    ', run_id, ' -> Run', self.mid)
@@ -336,7 +347,6 @@ class MultiRun_Module:
             if threading.active_count() - n_basic < self.n_thread:
                 self.threads[i].start()
                 time.sleep(1)               # avoid reading the compile_commands.json at the same time
-                print(f'    Starting thread {i}')
                 i += 1
                 interval = 0
             else:
@@ -345,7 +355,7 @@ class MultiRun_Module:
         for t in self.threads:
             t.join()
         t2 = time.time()
-        print(f'\n - Duration: {t1} -> {t2} = {t2 - t1:.3f}s')
+        print(f'\n - Overall duration: {t1} -> {t2} = {t2 - t1:.3f}s')
 
     def dfs(self, index, value, flag=False):
         ''' DFS of scan_all: false for execute, true for mark. '''
