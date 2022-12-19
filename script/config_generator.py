@@ -279,7 +279,49 @@ class ConfigGenerator:
             self.generate_link(n_leaf)
             self.generate_flow()
             self.generate_cross()
-    
+
+    @record_output
+    def generate_train_w_left_btnk(self, left_btnk_groups, right_btnk_groups,
+                                   match_btnk=False, n_run=4,
+                                   sim_start=0.0, sim_end=60.0):
+        """Generate train set with left btnk. The btnk bw and cross bw ratio are
+        set to get the same available bandwidth as (500-1000) Mbps with
+        (0.5, 0.8) ratio.
+        """
+        btnk_grp = None
+        if match_btnk:
+            assert len(left_btnk_groups) == len(right_btnk_groups)
+            btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        else:
+            btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['C(250:50:501)'] * n_left_btnk,
+                             ['C(1000:100:1501)'] * n_right_btnk]}
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(link_str_info=link_str_info)
+            self.generate_flow(n_total_users=400)
+            self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
+
+    @record_output
+    def generate_train_w_right_btnk(self, left_btnk_groups, right_btnk_groups,
+                                    match_btnk=False, n_run=4,
+                                    sim_start=0.0, sim_end=60.0):
+        """Generate train set with right btnk. Note that the # right btnk should
+        better not exceed 10, otherwise the left btnk bw would be too small."""
+        btnk_grp = None
+        if match_btnk:
+            assert len(left_btnk_groups) == len(right_btnk_groups)
+            btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        else:
+            btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['C(2000:100:2101)'] * n_left_btnk,
+                             ['C(100:50:200)'] * n_right_btnk]}
+            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+            self.generate_link(link_str_info=link_str_info)
+            self.generate_flow(n_total_users=600)   # increase to ensure right btnk
+            self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
+
     @record_output
     def generate_one_to_n(self, n_run=4, sim_start=0.0, sim_end=60.0, n_leaf=None):
         """One to N topology for basic test set.
@@ -492,8 +534,8 @@ if __name__ == '__main__':
     arg_grp.add_argument('--tag', '-t', type=str, default='config_gen',
                         help='Tag for the config')
     parser.add_argument('--profile', '-p', type=str, default='',
-                        choices=['', 'one-to-n', 'path-lag', 'load-scan',
-                        'large-flow', 'para-btnk'],
+                        choices=['', 'left-btnk', 'right-btnk', 'one-to-n',
+                        'path-lag', 'load-scan', 'large-flow', 'para-btnk'],
                         help='Profile for the config generation')
     parser.add_argument('--left_btnk_group', '-lb', type=int, nargs='+',
                         help='Number of left bottleneck links in each group')
@@ -525,6 +567,12 @@ if __name__ == '__main__':
     if not args.profile:    
         cgen.generate(args.left_btnk_group, args.right_btnk_group, args.match_btnk,
                       args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile == 'left-btnk':
+        cgen.generate_train_w_left_btnk(args.left_btnk_group, args.right_btnk_group,
+                      args.match_btnk, args.n_run, args.start, args.end)
+    elif args.profile == 'right-btnk':
+        cgen.generate_train_w_right_btnk(args.left_btnk_group, args.right_btnk_group,
+                      args.match_btnk, args.n_run, args.start, args.end)
     elif args.profile == 'one-to-n':
         cgen.generate_one_to_n(args.n_run, args.start, args.end, args.n_leaf)
     elif args.profile == 'path-lag':
