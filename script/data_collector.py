@@ -31,17 +31,35 @@ def execute(cmd, verbose=False):
     if out:
         print('  ', out)
 
+
+def get_folders(tag, path, excluded):
+    """Get all the folders with the tag/pattern except those w/ 
+    the excluded word."""
+    os.chdir(path)
+    folders = glob.glob(f'*{tag}*/')
+    if excluded:
+        folders = list(filter(lambda r: not excluded in r, folders))
+    excluded_str = f'except those w/ {excluded}' if excluded else ''
+    print(f'= Found {len(folders)} folders with tag {tag} {excluded_str}')
+    return folders
+
+
 def collect(tag,
             root='../BBR_test/ns-3.27',
-            out_folder=None):
+            out_folder=None,
+            excluded='merged'):
     """Collect results from all the folders include the tag and put into
     output folder.
     """
+    # os.chdir(root)
+    # root = os.getcwd()      # get the absolute path
+    # results = sp.getoutput(f'ls -d *{tag}*').split('\n')
+    # results = list(filter(lambda r: not 'merged' in r, results))
+    # print(f'= Found {len(results)} folders with tag {tag}')
+
     os.chdir(root)
     root = os.getcwd()      # get the absolute path
-    results = sp.getoutput(f'ls -d *{tag}*').split('\n')
-    results = list(filter(lambda r: not 'merged' in r, results))
-    print(f'= Found {len(results)} folders with tag {tag}')
+    results = get_folders(tag, root, excluded)
 
     # Create output folder
     if out_folder is None:
@@ -57,6 +75,8 @@ def collect(tag,
     # Collect all the folders
     merge_runs = {}
     for result in results:
+        if result[-1] == '/':
+            result = result[:-1]
         print(f'\n= Copying from {result} ...')
         num = {}
         logs = sp.getoutput(f'ls {result}/logs/log_*').split('\n')
@@ -110,5 +130,7 @@ if __name__ == '__main__':
                         help='The root folder of the simulation runs')
     parser.add_argument('-o', '--out_folder', type=str, default=None,
                         help='The output folder of the merged results')
+    parser.add_argument('-e', '--excluded', type=str, default=None,
+                        help='The excluded word in the folder name')
     args = parser.parse_args()
-    collect(args.tag, args.root, args.out_folder)
+    collect(args.tag, args.root, args.out_folder, args.excluded)
