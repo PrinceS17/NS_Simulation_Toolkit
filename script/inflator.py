@@ -7,6 +7,14 @@ def choice_of_ytb_bitrate():
     p = np.array([4.9, 13.3, 23.7, 33.1, 18.15, 6.75, 0.05, 0.05]) / 100
     return np.random.choice(bitrate, 1, p=p)
 
+def isfloat(val):
+    """Check if a string is a float."""
+    try:
+        float(val)
+        return True
+    except ValueError:
+        return False
+
 def inflate_rows(df_config, is_test):
     """
     Inflate aggregated fields, i.e. broadcast the element in the 
@@ -47,14 +55,17 @@ def inflate_rows(df_config, is_test):
             vals = np.random.uniform(tmp[0], tmp[1], 1)
         elif val[0] == 'C':
             tmp = val[2:-1].split(' ')
-            if ' ' in val and not tmp[0].isdigit():
+            if ' ' in val:      # use ' ' grammar only for enumeration
                 candidates = tmp
+                if isfloat(tmp[0]):
+                    candidates = list(map(float, candidates))
             elif ':' in val[1:]:
                 tmp = eval(val[1:].replace(':', ','))
                 candidates = list(range(tmp[0], tmp[2], tmp[1]))
-            else:
-                tmp = eval(val[1:].replace(' ', ','))
-                candidates = list(range(tmp[0], tmp[1], tmp[2]))
+            # else:
+            #     # deprecated
+            #     tmp = eval(val[1:].replace(' ', ','))
+            #     candidates = list(range(tmp[0], tmp[1], tmp[2]))
             vals = np.random.choice(candidates, 1)
         elif val[0] == 'L':
             vals = np.random.lognormal(tmp[0], tmp[1], 1)
