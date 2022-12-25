@@ -341,7 +341,7 @@ class ConfigGenerator:
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow()
-            self.generate_cross(cross_bw_ratio='U(0.5 0.9)')
+            self.generate_cross(cross_bw_ratio='U(0.5 0.8)')
 
     @record_output
     def generate_path_lag_scan(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -399,12 +399,12 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [2] * 4, [4, 8, 12, 16]
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(1000 5)'] * n_left_btnk,
-                             ['C(100:100:301)'] * n_right_btnk]}
+            link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
+                             ['C(100:100:201)'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
-            self.generate_flow(n_total_users=400)
-            self.generate_cross(cross_bw_ratio='U(0.3 0.7)')
+            self.generate_flow(rate_str='C(2.5 5 8)', num_str='50')
+            self.generate_cross(cross_bw_ratio='U(0.2 0.5)')
 
 
 class ConfigGeneratorTest(unittest.TestCase):
