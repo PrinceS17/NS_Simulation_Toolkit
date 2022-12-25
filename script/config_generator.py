@@ -402,8 +402,8 @@ class ConfigGenerator:
             link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
                              ['C(100:100:201)'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
-            self.generate_link(link_str_info=link_str_info)
-            self.generate_flow(rate_str='C(2.5 5 8)', num_str='50')
+            self.generate_link(n_leaf=2, link_str_info=link_str_info)
+            self.generate_flow(rate_str='C(2.5 5 8)', num_str='25')
             self.generate_cross(cross_bw_ratio='U(0.2 0.5)')
 
 
