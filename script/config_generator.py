@@ -34,13 +34,14 @@ class ConfigGenerator:
     don't inflate fields other than run for clear visualization in csv.
     """
 
-    def __init__(self, folder, tag, root='../BBR_test/ns-3.27/edb_configs'):
+    def __init__(self, folder, tag, note, root='../BBR_test/ns-3.27/edb_configs'):
         """Maintains the dir and csv for output.
         """
         self.folder = os.path.join(root, folder)
         if not os.path.exists(self.folder):
             os.makedirs(self.folder)
         self.tag = tag
+        self.note = note
         self.next_run = 0
         self.col_map = {
             'link': ['src', 'dst', 'position', 'type', 'bw_mbps', 'delay_ms',
@@ -99,6 +100,12 @@ class ConfigGenerator:
         with open(cmd_txt, 'w') as f:
             f.write(cmd)
         print(f'Output cmd: {cmd_txt}')
+    
+    def output_note(self):
+        note = os.path.join(self.folder, f'{self.tag}_note.txt')
+        with open(note, 'w') as f:
+            f.write(self.note)
+        print(f'Output note: {note}')
 
     def generate_link(self, n_leaf=None, link_str_info={}):
         """Generate link config csv based on the number of bottleneck links.
@@ -263,6 +270,7 @@ class ConfigGenerator:
             for typ in self.col_map.keys():
                 self.output_csv(typ, is_spec=True)
             self.output_cmd()
+            self.output_note()
         return wrapper
 
     @record_output
@@ -537,6 +545,8 @@ if __name__ == '__main__':
                         choices=['', 'left-btnk', 'right-btnk', 'one-to-n',
                         'path-lag', 'load-scan', 'large-flow', 'para-btnk'],
                         help='Profile for the config generation')
+    parser.add_argument('--note', '-nt', type=str, default='',
+                        help='Note for the current config')
     parser.add_argument('--left_btnk_group', '-lb', type=int, nargs='+',
                         help='Number of left bottleneck links in each group')
     parser.add_argument('--right_btnk_group', '-rb', type=int, nargs='+',
@@ -549,7 +559,7 @@ if __name__ == '__main__':
                         help='Number of leaves per gateway')
     parser.add_argument('--start', '-s', type=float, default=0.0,
                         help='Simulation start time (s)')
-    parser.add_argument('--end', '-e', type=float, default=600.0,
+    parser.add_argument('--end', '-e', type=float, default=60.0,
                         help='Simulation end time (s)')
     arg_grp.add_argument('--test', action='store_true', default=False,
                         help='Run unittests')
@@ -563,7 +573,7 @@ if __name__ == '__main__':
         runner.run(suite())
         exit(0)
 
-    cgen = ConfigGenerator(args.folder, args.tag)
+    cgen = ConfigGenerator(args.folder, args.tag, args.note)
     if not args.profile:    
         cgen.generate(args.left_btnk_group, args.right_btnk_group, args.match_btnk,
                       args.n_run, args.start, args.end, args.n_leaf)
