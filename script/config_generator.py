@@ -311,7 +311,7 @@ class ConfigGenerator:
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf)
             n_total = self._get_max_n_total(500, n_left_btnk,
-                                            n_right_btnk, is_leaf=False)
+                                            n_right_btnk, is_left=False)
             self.generate_flow(n_total_users=n_total)
             self.generate_cross()
             self.n_total.append(n_total)
