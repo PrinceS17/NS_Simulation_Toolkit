@@ -6,7 +6,6 @@ SEC_SETTING="--time=4:00:00 --partition=secondary"
 
 TRAIN_DIR="train_tailored"
 TEST_DIR="test_basic"
-#POST_CUT='cut -f 4 -d " "'
 
 if [[ $1 == "train" ]]; then
     # 4 x 36 runs
