@@ -310,8 +310,11 @@ class ConfigGenerator:
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf)
-            self.generate_flow()
+            n_total = self._get_max_n_total(500, n_left_btnk,
+                                            n_right_btnk, is_leaf=False)
+            self.generate_flow(n_total_users=n_total)
             self.generate_cross()
+            self.n_total.append(n_total)
 
     @record_output
     def generate_train_w_left_btnk(self, left_btnk_groups, right_btnk_groups,
@@ -597,7 +600,7 @@ if __name__ == '__main__':
                         help='Number of right bottleneck links in each group')
     parser.add_argument('--match_btnk', '-m', action='store_true', default=False,
                         help='Match the number of bottlenecks in left/right group')
-    parser.add_argument('--n_run', '-n', type=int, default=10,
+    parser.add_argument('--n_run', '-n', type=int, default=4,
                         help='Number of runs in each group')
     parser.add_argument('--n_leaf', '-l', type=int,
                         help='Number of leaves per gateway')
