@@ -228,6 +228,7 @@ class MultiRun_Module:
             for run in df_inflated.run.unique():
                 df = df_base.copy()
                 df_inflated_run = df_inflated[df_inflated.run == run]
+                tmp_df = pd.DataFrame(columns=df.columns)
                 for _, row in df_inflated_run.iterrows():
                     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst)].index
                     new_row = row.drop('run')
@@ -235,13 +236,14 @@ class MultiRun_Module:
                         df = df.drop(i_row)
                     assert (new_row.index == df.columns).all(), \
                         'Mismatched columns in spec and base configs!'
-                    df = df.append(new_row, ignore_index=True)
+                    tmp_df = tmp_df.append(new_row, ignore_index=True)
                     # for col in df_inflated_run.columns:
                     #     if col == 'run':
                     #         continue
                     #     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst), col]
                     #     df.iloc[i_row, col] = row[col]
-                df = df.sort_values(by=['src', 'dst'], ignore_index=True)
+                df = pd.concat([df, tmp_df], ignore_index=True)
+                df = df.sort_values(by=['src', 'dst'])
                 config_dfs[-1].append(df)
         return config_dfs
 
