@@ -346,7 +346,7 @@ class MultiRun_Module:
         while i < len(self.threads):
             if threading.active_count() - n_basic < self.n_thread:
                 self.threads[i].start()
-                time.sleep(1)               # avoid reading the compile_commands.json at the same time
+                time.sleep(2.5)               # avoid reading the compile_commands.json at the same time
                 i += 1
                 interval = 0
             else:
