@@ -7,6 +7,7 @@ SEC_SETTING="--time=4:00:00 --partition=secondary"
 TRAIN_DIR="train_tailored"
 TEST_DIR="test_basic"
 
+
 if [[ $1 == "train" ]]; then
     # 4 x 36 runs
     JOB_TL_S1=$(sbatch ${SEC_SETTING} ${TRAIN_DIR}/left_small.sbatch | cut -f 4 -d " ")
