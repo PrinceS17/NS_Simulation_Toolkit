@@ -8,7 +8,7 @@ TRAIN_DIR="train_tailored"
 TEST_DIR="test_basic"
 POST_CUT='cut -f 4 -d " "'
 
-# 4 x 48 runs = 192 runs
+# 4 x 36 runs
 JOB_TL_S1=$(sbatch ${SEC_SETTING} ${TRAIN_DIR}/left_small.sbatch | ${POST_CUT})
 JOB_TL_S2=$(sbatch --dependency=afterany:${JOB_TL_S1} ${SEC_SETTING} ${TRAIN_DIR}/left_small.sbatch | ${POST_CUT})
 JOB_TR_S1=$(sbatch --dependency=afterany:${JOB_TL_S2} ${SEC_SETTING} ${TRAIN_DIR}/right_small.sbatch | ${POST_CUT})
