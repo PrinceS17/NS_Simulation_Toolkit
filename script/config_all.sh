@@ -1,4 +1,4 @@
-#!/usr/bash
+#!/bin/bash
 
 # This script is used to generate all dataset configs.
 
@@ -7,15 +7,15 @@ export PYTHONPATH=/home/jinhuis2/scratch/mypython3:$PYTHONPATH
 
 CONFIG="python3 config_generator.py"
 N_RUN=36
-MODE=TRAIN
+MODE=$1
 
-if [[ $MODE == "TRAIN"]]; then
+if [[ $MODE == "train" ]]; then
     $CONFIG -t cb-tleft-small -lb 2 2 -rb 2 3 -m -n $N_RUN -e 50 -p left-btnk
     $CONFIG -t cb-tleft-middle -lb 2 2 3 4 -rb 5 6 4 4 -m -n $N_RUN -e 50 -p left-btnk
     $CONFIG -t cb-tright-small -lb 2 2 -rb 2 3 -m -n $N_RUN -e 50 -p right-btnk
     $CONFIG -t cb-tright-middle -lb 2 2 3 4 -rb 5 6 4 4 -m -n $N_RUN -e 50 -p right-btnk
     $CONFIG -t cbtnk-large -lb 2 4 -rb 8 16 -n $N_RUN -e 50
-elif [[ $MODE == "TEST" ]]; then
+elif [[ $MODE == "test" ]]; then
     $CONFIG -t cbtest-one-to-n -p one-to-n -e 50        # 12 runs, >12h
     $CONFIG -t cbtest-path-lag -p path-lag -e 50        # 24 runs, 4h
     $CONFIG -t cbtest-load-scan -p load-scan -e 50      # 20 runs, >12h
