@@ -55,6 +55,7 @@ class ConfigGenerator:
         for typ, cols in self.col_map.items():
             # self.data[typ] = {k: [] for k in ['run'] + cols}
             self.data[typ] = []
+        self.n_total = []
 
     def init_group(self, n_left_btnk, n_right_btnk, n_run=10, sim_start=0, sim_end=600):
         self.group = {
@@ -84,6 +85,30 @@ class ConfigGenerator:
         self.group['next_node'] += n
         return start, end
 
+    def _get_max_n_total(self, bw_avail, n_left_btnk, n_right_btnk, is_left):
+        """Get the minimal max number of n_total for Pareto distribution that
+        is enough to saturate the given bottleneck link.
+
+        The experience formula for total user calculation if follow Pareto distribution:
+        (supposing the average user number of Pareto is n_total / 4)
+
+            Left btnk: bw = n_total / 4 * 2Mbps => n_total = 2 bw_in_Mbps
+            Right btnk: right_bw = n_total / 4 * (n_left_btnk / n_right_btnk) * 2Mbps
+                        => n_total = 2 right_bw_in_Mbps * n_right_btnk / n_left_btnk
+
+        Args:
+            bw_avail: available bandwidth in Mbps after considering the cross bw
+            n_left_btnk: number of left bottleneck links
+            n_right_btnk: number of right bottleneck links
+            is_left: whether the btnk is left or right
+
+        Returns:
+            int: max number of n_total for Pareto() setting.
+        """
+        if is_left:
+            return int(2 * bw_avail)
+        return int(2 * bw_avail * n_right_btnk / n_left_btnk)
+
     def output_csv(self, typ, is_spec):
         mid = 'spec_' if is_spec else ''
         csv = os.path.join(self.folder, f'{self.tag}_{mid}{typ}.csv')
@@ -103,8 +128,10 @@ class ConfigGenerator:
     
     def output_note(self):
         note = os.path.join(self.folder, f'{self.tag}_note.txt')
+        n_user_note = '\n n_total_user: ' + ','.join(map(str, self.n_total))
         with open(note, 'w') as f:
             f.write(self.note)
+            f.write(n_user_note)
         print(f'Output note: {note}')
 
     def generate_link(self, n_leaf=None, link_str_info={}):
@@ -215,10 +242,8 @@ class ConfigGenerator:
         # We divide it by the number of dst to compute the number of users for each src
         # server, and obtain the power law for user number here.
         # (Note that here ns-3 path is assumed to contain 'num' users.)
-        # TODO: the understanding of the figure seems wrong
-        #       80 users have 1 servers doesn't mean 1 servers only have 80 users!
-        #       80 is too less for an edge server, set to 200 for now
-        n_total_users = 200 if n_total_users is None else n_total_users
+        # n_total is supposed to be overwritten by caller outside.
+        n_total_users = 500 if n_total_users is None else n_total_users
         if num_str is None:
             user_per_dst = n_total_users / len(self.group["leaves"][1])
             num_str = f'P({user_per_dst} 0.44)'
@@ -297,18 +322,22 @@ class ConfigGenerator:
         (0.5, 0.8) ratio.
         """
         btnk_grp = None
+        max_left_bw = 501
         if match_btnk:
             assert len(left_btnk_groups) == len(right_btnk_groups)
             btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         else:
             btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['C(250:50:501)'] * n_left_btnk,
+            link_str_info = {'bw': [[f'C(250:50:{max_left_bw})'] * n_left_btnk,
                              ['C(1000:100:1501)'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
-            self.generate_flow(n_total_users=400)
+            n_total = self._get_max_n_total(max_left_bw, n_left_btnk,
+                                            n_right_btnk, is_left=True)
+            self.generate_flow(n_total_users=n_total)
             self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
+            self.n_total.append(n_total)
 
     @record_output
     def generate_train_w_right_btnk(self, left_btnk_groups, right_btnk_groups,
@@ -317,6 +346,7 @@ class ConfigGenerator:
         """Generate train set with right btnk. Note that the # right btnk should
         better not exceed 10, otherwise the left btnk bw would be too small."""
         btnk_grp = None
+        max_right_bw = 201
         if match_btnk:
             assert len(left_btnk_groups) == len(right_btnk_groups)
             btnk_grp = zip(left_btnk_groups, right_btnk_groups)
@@ -324,25 +354,32 @@ class ConfigGenerator:
             btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {'bw': [['C(2000:100:2101)'] * n_left_btnk,
-                             ['C(100:50:200)'] * n_right_btnk]}
+                             [f'C(100:50:{max_right_bw})'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
-            self.generate_flow(n_total_users=600)   # increase to ensure right btnk
+            n_total = self._get_max_n_total(max_right_bw, n_left_btnk,
+                                            n_right_btnk, is_left=False)
+            self.generate_flow(n_total_users=n_total)
             self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
+            self.n_total.append(n_total)
 
     @record_output
     def generate_one_to_n(self, n_run=4, sim_start=0.0, sim_end=60.0):
-        """One to N topology for basic test set.
+        """One to N topology for basic test set. Here we want it some times
+        co-bottleneck, and sometimes just not.
         """
         n_leaf = 2
         left_btnk_groups, right_btnk_groups = [1], [2, 4, 6]
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['C(300:100:401)'], [''] * n_right_btnk]}
+            link_str_info = {'bw': [[f'C(300:100:601)'], [''] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
-            self.generate_flow()
+            n_total = self._get_max_n_total(400, n_left_btnk,
+                                            n_right_btnk, is_left=True)
+            self.generate_flow(n_total_users=n_total)
             self.generate_cross(cross_bw_ratio='U(0.5 0.8)')
+            self.n_total.append(n_total)
 
     @record_output
     def generate_path_lag_scan(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -358,8 +395,9 @@ class ConfigGenerator:
             }
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
-            self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(10 1)')
+            self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(20 1)')
             self.generate_cross(cross_bw_ratio='U(0.5 0.6)')
+            self.n_total.append(-20)
 
     @record_output
     def generate_cross_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
@@ -372,25 +410,30 @@ class ConfigGenerator:
             link_str_info = {'bw': [['N(300 5)'], [''] * 6]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
-            self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(10 1)')
+            self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(20 1)')
             self.generate_cross(cross_bw_ratio=0.1 + i * 0.2)
+            self.n_total.append(-20)
 
     @record_output
     def generate_large_flow_num(self, n_run=4, sim_start=0.0, sim_end=60.0):
         """Generate large number of flow test set.
-        Scenario: right btnk, run 1~4 w/ 2 btnks, run 5~8 w/ 6 btnks.
-        Within each group, scan the number of flows.
+        Scenario: right btnk, group 1~3 w/ 2 btnks, group 4~6 w/ 6 btnks.
+        Within each group, scan the number of flows, thus 24 runs in total.
         """
-        left_btnk_groups, right_btnk_groups = [2] * 3, [6] * 3
+        left_btnk_groups, right_btnk_groups = [2] * 6, [2] * 3 + [6] * 3
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
-        n_user_choice = [400, 600, 800]
+        max_right_bw = 301
+        user_ratio = [1, 1.5, 2]
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {'bw': [['N(1000 5)'] * n_left_btnk,
-                            ['C(100:100:301)'] * n_right_btnk]}
+                            [f'C(100:100:{max_right_bw})'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
-            self.generate_flow(n_total_users=n_user_choice[i % 3])
+            n_total = user_ratio[i % 3] * self._get_max_n_total(max_right_bw,
+                        n_left_btnk, n_right_btnk, is_left=False)
+            self.generate_flow(n_total_users=n_total)
             self.generate_cross(cross_bw_ratio='U(0.3 0.7)')   # then left btnk > 300M
+            self.n_total.append(n_total)
 
     @record_output
     def generate_para_btnk(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -406,7 +449,7 @@ class ConfigGenerator:
             self.generate_link(n_leaf=2, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', num_str='25')
             self.generate_cross(cross_bw_ratio='U(0.2 0.5)')
-
+            self.n_total.append(25 * 2 * n_right_btnk)
 
 class ConfigGeneratorTest(unittest.TestCase):
     def setUp(self) -> None:
