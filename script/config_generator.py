@@ -331,13 +331,14 @@ class ConfigGenerator:
             self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
 
     @record_output
-    def generate_one_to_n(self, n_run=4, sim_start=0.0, sim_end=60.0, n_leaf=None):
+    def generate_one_to_n(self, n_run=4, sim_start=0.0, sim_end=60.0):
         """One to N topology for basic test set.
         """
-        left_btnk_groups, right_btnk_groups = [1], [4, 6, 8]
+        n_leaf = 2
+        left_btnk_groups, right_btnk_groups = [1], [2, 4, 6]
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['C(300:100:501)'], [''] * n_right_btnk]}
+            link_str_info = {'bw': [['C(300:100:401)'], [''] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow()
@@ -584,7 +585,7 @@ if __name__ == '__main__':
         cgen.generate_train_w_right_btnk(args.left_btnk_group, args.right_btnk_group,
                       args.match_btnk, args.n_run, args.start, args.end)
     elif args.profile == 'one-to-n':
-        cgen.generate_one_to_n(args.n_run, args.start, args.end, args.n_leaf)
+        cgen.generate_one_to_n(args.n_run, args.start, args.end)
     elif args.profile == 'path-lag':
         cgen.generate_path_lag_scan(args.n_run, args.start, args.end)
     elif args.profile == 'load-scan':
