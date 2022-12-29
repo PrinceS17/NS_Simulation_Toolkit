@@ -492,7 +492,7 @@ class ConfigGenerator:
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(20 1)')
             self.generate_cross(cross_bw_ratio=0.1 + i * 0.2,
-                                cross_bw_ratio2=0)
+                                cross_bw_ratio2=0.05)
             self.n_total.append(-20)
 
     @record_output
@@ -508,7 +508,7 @@ class ConfigGenerator:
             self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=[2,3])
             self.generate_flow(rate_str='C(2.5 5 8)', num_str='N(20 1)')
             self.generate_cross(cross_bw_ratio=0.1 + i * 0.2,
-                                cross_bw_ratio2=0)
+                                cross_bw_ratio2=0.05)
             self.n_total.append(-20)
 
     @record_output
@@ -529,7 +529,7 @@ class ConfigGenerator:
             n_total = user_ratio[i % 3] * self._get_max_n_total(max_right_bw,
                         n_left_btnk, n_right_btnk, is_left=False)
             self.generate_flow(n_total_users=n_total)
-            self.generate_cross(cross_bw_ratio=0,
+            self.generate_cross(cross_bw_ratio=0.05,
                                 cross_bw_ratio2='U(0.3 0.7)')   # then left btnk > 300M
             self.n_total.append(n_total)
     
@@ -549,7 +549,7 @@ class ConfigGenerator:
             n_total = user_ratio[i % 3] * self._get_max_n_total(max_right_bw,
                         n_left_btnk, n_right_btnk, is_left=False)
             self.generate_flow(n_total_users=n_total)
-            self.generate_cross(cross_bw_ratio=0,
+            self.generate_cross(cross_bw_ratio=0.05,
                                 cross_bw_ratio2='U(0.2 0.5)')   # then left btnk > 300M
             self.n_total.append(n_total)
 
@@ -566,7 +566,7 @@ class ConfigGenerator:
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf=2, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', num_str='25')
-            self.generate_cross(cross_bw_ratio=0,
+            self.generate_cross(cross_bw_ratio=0.05,
                                 cross_bw_ratio2='U(0.2 0.5)')
             self.n_total.append(25 * 2 * n_right_btnk)
     
@@ -583,7 +583,7 @@ class ConfigGenerator:
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf=2, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', num_str='25')
-            self.generate_cross(cross_bw_ratio=0,
+            self.generate_cross(cross_bw_ratio=0.05,
                                 cross_bw_ratio2='U(0.1 0.4)')
             self.n_total.append(25 * 2 * n_right_btnk)
 
