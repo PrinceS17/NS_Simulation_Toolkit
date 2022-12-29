@@ -550,7 +550,7 @@ class ConfigGenerator:
                         n_left_btnk, n_right_btnk, is_left=False)
             self.generate_flow(n_total_users=n_total)
             self.generate_cross(cross_bw_ratio=0,
-                                cross_bw_ratio='U(0.2 0.5)')   # then left btnk > 300M
+                                cross_bw_ratio2='U(0.2 0.5)')   # then left btnk > 300M
             self.n_total.append(n_total)
 
     @record_output
