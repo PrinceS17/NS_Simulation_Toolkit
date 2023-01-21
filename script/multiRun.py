@@ -53,6 +53,7 @@ class MultiRun_Module:
         self.config_tag = []
         self.dry_run = False
         self.thread_duration = []
+        self.use_monitor = False
     
     def _set_folder(self, tag):
         subdir = f'results_{tag}_' + time.strftime('%b-%d-%H:%M:%S') + \
@@ -103,6 +104,8 @@ class MultiRun_Module:
                 self.dry_run = True
             elif '-j' in arg:
                 self.n_thread = int(arg[2:])
+            elif arg == '-use-monitor':
+                self.use_monitor = True
             elif read_program:
                 self.program = arg
                 read_program = False
@@ -285,6 +288,7 @@ class MultiRun_Module:
                 run_id += f' -{type_str[j]}Config={tag}'
              # run ns3
             cmd = f'./waf --run "scratch/{self.program} -verbose=2 ' \
+                  f'-useMonitor={self.use_monitor} ' \
                   f'-{self.id_param}={self.mid} -configFolder={tmps}'
             suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
             self.run_map[run_id] = self.mid
