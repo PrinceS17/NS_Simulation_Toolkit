@@ -154,9 +154,13 @@ class ConfigGenerator:
 
         # BW: side x btnk index, delay: side x leaf index(only leaf allowed for delay)
         small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.9 1.3225)'
-        small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
+        # small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
+        # half for debug first, large portion should be right btnk,
+        #   but also include some left btnk cases
+        small_bw_str = ['C(500:100:1501)', 'C(50:50:201)']
+        large_bw_str = '2000'
         cur_link_str_info = {
-            'bw': [[small_bw_str for _ in range(self.group['n_btnk'][side])]
+            'bw': [[small_bw_str[side] for _ in range(self.group['n_btnk'][side])]
                     for side in range(2)],
             'delay': [[small_delay_str for _ in range(self.group['n_btnk'][side])]
                     for side in range(2)],
@@ -264,6 +268,7 @@ class ConfigGenerator:
     def generate_cross(self, cross_bw_ratio=None, cross_bw_ratio2=None):
         """Generate cross traffic configs.
 
+        If not given, cross_bw_ratio for left/right btnk is U[0.05, 0.95].
         Cross config: 'src', 'dst', 'num', 'mode', 'cross_bw_ratio', 'edge_rate_mbps',
                     'hurst', 'mean_duration', 'start', 'end'.
         """
@@ -274,7 +279,8 @@ class ConfigGenerator:
         hurst_str = 'U(0.5 0.9)'
         start, end = self.group['sim_start'], self.group['sim_end']
 
-        cross_bw_ratios = ['U(0.05 0.95)', 'U(0.05 0.95)']
+        # cross_bw_ratios = ['U(0.05 0.95)', 'U(0.05 0.95)']
+        cross_bw_ratios = ['U(0.05 0.3)', 'U(0.05 0.3)']
         if cross_bw_ratio is not None:
             cross_bw_ratios[0] = cross_bw_ratio
             cross_bw_ratios[1] = cross_bw_ratio
