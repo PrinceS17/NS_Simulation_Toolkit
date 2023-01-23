@@ -6,7 +6,7 @@ module load python/3 gcc/7.2.0
 export PYTHONPATH=/home/jinhuis2/scratch/mypython3:$PYTHONPATH
 
 CONFIG="python3 config_generator.py"
-N_RUN=36
+N_RUN=12
 MODE=$1
 
 if [[ $MODE == "train" ]]; then
