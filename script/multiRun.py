@@ -581,8 +581,7 @@ def main():
     print(' -- Scanning comoplete.')
     mr.collect_all()
     print(' -- All data collected.')
-    mr.plot_all(2)
-
+    # mr.plot_all(2)
     # mr.show_all()
     # print(' -- All figures stored ...')
     
