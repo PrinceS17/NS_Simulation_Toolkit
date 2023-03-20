@@ -15,7 +15,7 @@ is_test = False
 class MultiRun_Module:
     ''' Batch simulation scanning general parameter within specified range.'''
 
-    def __init__(self, folder=None, scpt=None):
+    def __init__(self, folder=None, scpt=None, debug_time=None):
         self.path = ''       # path of current processing
         self.res_path = ''   # path of results: figs and logs
         self.scpt_path = ''  # path of script containing mPlotData.sh
@@ -33,6 +33,7 @@ class MultiRun_Module:
         self.change_dat_name = False    # if change dat name with run ID
         self.n_thread = 6
         self.threads = []
+        self.debug_time = debug_time
 
         root = os.getcwd()
         root = root[:root.find ('Toolkit') + 7]
@@ -54,7 +55,7 @@ class MultiRun_Module:
         self.dry_run = False
         self.thread_duration = []
         self.use_monitor = False
-    
+
     def _set_folder(self, tag):
         subdir = f'results_{tag}_' + time.strftime('%b-%d-%H:%M:%S') + \
             str(random.randint(0, 100))
@@ -68,15 +69,26 @@ class MultiRun_Module:
         self.cfg_out_path = os.path.join(self.res_path, 'cfgs')
 
     def parse(self, args):
-        ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8. '''
+        ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8.
+        This part may seem outdated now, and the reasoning at first is to scale the input of
+        all types of ns-3 args passed to multiRun, and directly feed them to each ns-3 run.
+        Thus, instead of a few fixed field, all the other args should be directly transmitted
+        to ns-3. As it grows larger and larger, the test overhead for transition to argparse
+        becomes larger as well...
+
+        TODO: improve using argparse
+        '''
         read_program = False
         read_csv = False
-        read_config_tag = 0
+        read_config_tag = False
         read_config_folder = False
+        read_debug_time = False
         not_number = False
         for arg in args:
             if arg == '-test':
                 is_test = True
+            elif arg == '-debug-time':
+                read_debug_time = True
             elif arg == '-crosson':
                 self.cross_on = True
             elif arg == '-crossoff':
@@ -92,7 +104,7 @@ class MultiRun_Module:
                 read_csv = True
                 continue
             elif arg == '-config-tag':
-                read_config_tag = 1
+                read_config_tag = True
                 continue
             elif arg == '-config-folder':
                 read_config_folder = True
@@ -106,17 +118,17 @@ class MultiRun_Module:
                 self.n_thread = int(arg[2:])
             elif arg == '-use-monitor':
                 self.use_monitor = True
+            elif read_debug_time:
+                self.debug_time = list(map(float, arg.split(':')))
+                assert len(self.debug_time) == 2
             elif read_program:
                 self.program = arg
                 read_program = False
             elif read_csv:
                 self.csv = arg
                 read_csv = False
-            elif read_config_tag > 0:
-                self.config_tag.append(arg)
-                read_config_tag += 1
-                if read_config_tag > 2:
-                    read_config_tag = 0
+            elif read_config_tag:
+                self.config_tag.extend([arg, arg + '_spec'])
             elif read_config_folder:
                 self.config_path = os.path.join(self.config_path, arg)
             elif arg[:2] == '--':       # used to specify non-number parameters
@@ -218,20 +230,41 @@ class MultiRun_Module:
                 continue
 
             # inflate specific config csv
-            inflated_csv = os.path.join(self.cfg_out_path, f'{self.config_tag[0]}_{config_type}_inflated.csv')
-            if os.path.exists(inflated_csv) and not self.overwrite_inflation:
-                df_inflated = pd.read_csv(inflated_csv, index_col=False, comment='#')
-                print(f'Inflated config csv loaded from {inflated_csv}')
-            else:
+            f_inflated = f'{self.config_tag[0]}_{config_type}_inflated.csv'
+            old_inflated_csv = os.path.join(self.config_path, f_inflated)
+            new_inflated_csv = os.path.join(self.cfg_out_path, f_inflated)
+            df_inflated = None
+
+            def _write_inflated_config():
                 df_inflated = inflator.inflate_rows(df_specific, is_test)
-                df_inflated.to_csv(inflated_csv, index=False)
-                print(f'Inflated config csv saved to {inflated_csv}')
+                df_inflated.to_csv(new_inflated_csv, index=False)
+                print(f'Inflated config csv saved to {new_inflated_csv}')
+                return df_inflated
+
+            if not self.overwrite_inflation:
+                # check out folder, but rarely there
+                if os.path.exists(new_inflated_csv):
+                    df_inflated = pd.read_csv(new_inflated_csv, index_col=False,
+                                              comment='#')
+                    print(f'Inflated config csv loaded from {new_inflated_csv}')
+                elif os.path.exists(old_inflated_csv):
+                    # copied from edb config if found there
+                    df_inflated = pd.read_csv(old_inflated_csv, index_col=False,
+                                              comment='#')
+                    os.system(f'cp {old_inflated_csv} {self.cfg_out_path}')
+                    print(f'Inflated config csv copied and loaded from {old_inflated_csv}')
+                else:
+                    print(f'No old inflated config found, rewriting it...')
+                    df_inflated = _write_inflated_config()
+            else:
+                df_inflated = _write_inflated_config()
 
             # combine base df and specific run info into config df for each ns-3 run
             for run in df_inflated.run.unique():
                 df = df_base.copy()
                 df_inflated_run = df_inflated[df_inflated.run == run]
                 tmp_df = pd.DataFrame(columns=df.columns)
+                tmp_list = []
                 for _, row in df_inflated_run.iterrows():
                     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst)].index
                     new_row = row.drop('run')
@@ -239,12 +272,13 @@ class MultiRun_Module:
                         df = df.drop(i_row)
                     assert (new_row.index == df.columns).all(), \
                         'Mismatched columns in spec and base configs!'
-                    tmp_df = tmp_df.append(new_row, ignore_index=True)
+                    tmp_list.append(new_row.tolist()) 
                     # for col in df_inflated_run.columns:
                     #     if col == 'run':
                     #         continue
                     #     i_row = df.loc[(df.src == row.src) & (df.dst == row.dst), col]
                     #     df.iloc[i_row, col] = row[col]
+                tmp_df = pd.DataFrame(tmp_list, columns=df.columns)
                 df = pd.concat([df, tmp_df], ignore_index=True)
                 df = df.sort_values(by=['src', 'dst'])
                 config_dfs[-1].append(df)
@@ -290,6 +324,8 @@ class MultiRun_Module:
             cmd = f'./waf --run "scratch/{self.program} -verbose=2 ' \
                   f'-useMonitor={self.use_monitor} ' \
                   f'-{self.id_param}={self.mid} -configFolder={tmps}'
+            if self.debug_time is not None:
+                cmd += f' -debugStart={self.debug_time[0]} -debugEnd={self.debug_time[1]}'
             suffix = '" > %s/log_debug_%s.txt 2>&1' % (os.path.join(self.res_path, 'logs'), self.mid)
             self.run_map[run_id] = self.mid
             cmd = cmd + run_id + suffix
@@ -300,12 +336,12 @@ class MultiRun_Module:
     def _run_in_thread(self, command, run_id, t_idx=-1):
         self.thread_duration.append(0)
         if not is_test and not self.dry_run:
-            print(f'  - Thread {len(self.threads)}: {command}')
+            print(f'\n  - Thread {len(self.threads)}: {command}')
             # os.system(command)
             t = Thread(target=self.run_cmd, args=(command, t_idx))
             self.threads.append(t)
 
-        print('    ', run_id, ' -> Run', self.mid)
+        # print('    ', run_id, ' -> Run', self.mid)
         self.out.write(run_id + '\n')
         self.mid += 1
 
@@ -407,7 +443,11 @@ class MultiRun_Module:
             os.system(f'cp {self.csv} {self.res_path}')
         if self.config_tag:
             for tag in self.config_tag:
+                # if overwrite-inflation is enabled, then the inflated csv under config_path
+                # and the newly generated ones under config_path/cfgs will be different, thus
+                # we need to overwrite the old one in the result folder
                 os.system(f'cp {self.config_path}/{tag}_*.csv {self.res_path}')
+                os.system(f'cp {self.cfg_out_path}/*.csv {self.res_path}')
 
         for id, mid in self.run_map.items():
             if self.mark_on:
@@ -576,11 +616,11 @@ def main():
     # folder = os.path.join('/home', 'sapphire', 'Documents', 'ns3_BBR', 'ns-3.27')
     mr = MultiRun_Module()
     mr.parse(sys.argv[1:])
-    print(' -- Parsing complete. Start scanning ...')
+    print('\n -- Parsing complete. Start scanning ...\n')
     mr.scan_all()
-    print(' -- Scanning comoplete.')
+    print('\n -- Scanning comoplete.\n')
     mr.collect_all()
-    print(' -- All data collected.')
+    print('\n -- All data collected.\n')
     # mr.plot_all(2)
     # mr.show_all()
     # print(' -- All figures stored ...')
@@ -625,8 +665,9 @@ if __name__ == "__main__":
         """)
     elif len(sys.argv) < 3:
         print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder]")
-        print("                          [-rebuild] [-overwrite_inflation] [-jN_THREAD]")
+        print("                          [-rebuild] [-overwrite-inflation] [-jN_THREAD]")
         print("                          [-csv CSV] [-crosson] [-markon] [-changedat]")
+        print("                          [-debug-time start:end]")
         print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
         print("     -test        run test cases.")
         print("     -crosson        include cross traffic.")
@@ -636,7 +677,9 @@ if __name__ == "__main__":
         print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
         print("     -config-folder subfolder      subfolder under edb_configs for config files.")
         print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
-        print("     -overwrite_inflation   overwrite inflation even when previous inflated csv exists.")
+        print("     -overwrite-inflation   overwrite inflation even when previous inflated csv exists.")
+        print("                     note that this only rewrites inflation in the output result dir but not edb configs")
+        print("     -debug-time     the debug start & end time for ns-3, overwrite config's start/end time") 
         print("     -dry-run        do all things except running ns-3.")
         print("\n  For cbtnk-extended-db simulation, config csvs in config-folder\n"
         "  is supported. Typically link, flow, cross config csvs are supported, and\n"

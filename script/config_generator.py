@@ -135,7 +135,7 @@ class ConfigGenerator:
         print(f'Output note: {note}')
 
     def generate_link(self, n_leaf=None, link_str_info={}, max_leaf=None,
-                      qsize_str='C(100:100:1001)', qtype_str='C(pie codel)'):
+                      qsize_str='C(100:100:501)', qtype_str='C(pie codel)'):
         """Generate link config csv based on the number of bottleneck links.
         Link config columns: 'src', 'dst', 'position', 'type', 'bw_mbps',
             'delay_ms', 'q_size', 'q_type', 'q_monitor'.
@@ -153,11 +153,11 @@ class ConfigGenerator:
         cur_link_data = []
 
         # BW: side x btnk index, delay: side x leaf index(only leaf allowed for delay)
-        small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.9 1.3225)'
+        small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.5 1.0)'
         # small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
         # half for debug first, large portion should be right btnk,
         #   but also include some left btnk cases
-        small_bw_str = ['C(500:100:1501)', 'C(50:50:201)']
+        small_bw_str = ['C(500:100:1501)', 'C(150:50:251)']
         large_bw_str = '2000'
         cur_link_str_info = {
             'bw': [[small_bw_str[side] for _ in range(self.group['n_btnk'][side])]
@@ -218,7 +218,7 @@ class ConfigGenerator:
         res_df = pd.DataFrame(cur_link_data, columns=['run'] + self.col_map['link']) # for test
         return res_df
 
-    def generate_flow(self, dynamic_ratio=0.33, rate_str=None, num_str=None,
+    def generate_flow(self, dynamic_ratio=0.1, rate_str=None, num_str=None,
                       start_str=None, end_str=None, n_total_users=None):
         """Generate flow configs.
 
@@ -230,6 +230,8 @@ class ConfigGenerator:
         Args:
             dynamic_ratio (float, optional): the ratio of dynamic window to total
                                              window size for flow start and end.
+                                             Good for simulation variation, but bad
+                                             for simulation time.
         """
         start, end = self.group['sim_start'], self.group['sim_end']
         dynamic_window = (end - start) * dynamic_ratio
@@ -389,7 +391,7 @@ class ConfigGenerator:
         """Generate train set with right btnk. Note that the # right btnk should
         better not exceed 10, otherwise the left btnk bw would be too small."""
         btnk_grp = None
-        max_right_bw = 201
+        max_right_bw = 251
         if match_btnk:
             assert len(left_btnk_groups) == len(right_btnk_groups)
             btnk_grp = zip(left_btnk_groups, right_btnk_groups)
@@ -397,7 +399,7 @@ class ConfigGenerator:
             btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {'bw': [['C(1000:100:1301)'] * n_left_btnk,
-                             [f'C(100:50:{max_right_bw})'] * n_right_btnk]}
+                             [f'C(150:50:{max_right_bw})'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
             n_total = self._get_max_n_total(max_right_bw, n_left_btnk,
@@ -528,7 +530,7 @@ class ConfigGenerator:
         user_ratio = [1, 1.5, 2]
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {'bw': [['N(1000 5)'] * n_left_btnk,
-                            [f'C(100:100:{max_right_bw})'] * n_right_btnk]}
+                            [f'C(150:100:{max_right_bw})'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
             n_total = user_ratio[i % 3] * self._get_max_n_total(max_right_bw,
@@ -544,11 +546,11 @@ class ConfigGenerator:
         """
         left_btnk_groups, right_btnk_groups = [2] * 6, [2] * 3 + [6] * 3
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
-        max_right_bw = 201
+        max_right_bw = 251
         user_ratio = [1, 1.5, 2]
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {'bw': [['N(1000 5)'] * n_left_btnk,
-                            [f'C(100:50:{max_right_bw})'] * n_right_btnk]}
+                            [f'C(150:50:{max_right_bw})'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
             n_total = user_ratio[i % 3] * self._get_max_n_total(max_right_bw,
@@ -567,7 +569,7 @@ class ConfigGenerator:
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
-                             ['C(100:100:201)'] * n_right_btnk]}
+                             ['C(150:50:251)'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf=2, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', num_str='25')
@@ -579,6 +581,7 @@ class ConfigGenerator:
     def generate_para_btnk_bkup(self, n_run=4, sim_start=0.0, sim_end=30.0):
         """Generate parallel btnk test set.
         Scenario: scan the number of the right btnks.
+        # TODO: deprecated, right btnk bw is too small
         """
         left_btnk_groups, right_btnk_groups = [2] * 4, [6, 8, 10, 12]
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
@@ -610,13 +613,13 @@ class ConfigGenerator:
         n_flow_per_btnk = 16
         load_ratios = [0.9, 0.95, 1.0]
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
-        # qsize: 1.5 * BDP ~ 1.5 * 100Mbps * 20ms / 1500B = 250 pkts
-        qsize_str = 'C(250:10:260)'
+        # qsize: 1.5 * BDP ~ 1.5 * 150Mbps * 20ms / 1500B = 375 pkts
+        qsize_str = 'C(350:10:400)'
         qtype_str = 'pie'
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             for load_ratio in load_ratios:
-                link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
-                                 ['C(100:10:101)'] * n_right_btnk]}
+                link_str_info = {'bw': [['N(2500 5)'] * n_left_btnk,
+                                 ['C(100:10:151)'] * n_right_btnk]}
                 self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
                 self.generate_link(n_leaf=1, link_str_info=link_str_info,
                                    qsize_str=qsize_str, qtype_str=qtype_str)
@@ -628,6 +631,7 @@ class ConfigGenerator:
 
 
 class ConfigGeneratorTest(unittest.TestCase):
+    # TODO: deprecated, not updated w/ possibly changed API
     def setUp(self) -> None:
         self.cgen = ConfigGenerator('cgen_test', 'cgen_test')
         self.cgen.init_group(2, 2)
@@ -777,14 +781,15 @@ if __name__ == '__main__':
     parser.add_argument('--right_btnk_group', '-rb', type=int, nargs='+',
                         help='Number of right bottleneck links in each group')
     parser.add_argument('--match_btnk', '-m', action='store_true', default=False,
-                        help='Match the number of bottlenecks in left/right group')
+                        help='If btnk group in left/right group should math for zip usage')
     parser.add_argument('--n_run', '-n', type=int, default=4,
                         help='Number of runs in each group')
     parser.add_argument('--n_leaf', '-l', type=int,
                         help='Number of leaves per gateway')
     parser.add_argument('--start', '-s', type=float, default=0.0,
                         help='Simulation start time (s)')
-    parser.add_argument('--end', '-e', type=float, default=60.0,
+    # TODO: reduce to 30s to reduce simulation time
+    parser.add_argument('--end', '-e', type=float, default=30.0,
                         help='Simulation end time (s)')
     arg_grp.add_argument('--test', action='store_true', default=False,
                         help='Run unittests')
