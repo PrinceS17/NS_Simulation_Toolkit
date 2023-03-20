@@ -154,10 +154,8 @@ class ConfigGenerator:
 
         # BW: side x btnk index, delay: side x leaf index(only leaf allowed for delay)
         small_delay_str, large_delay_str = 'N(0.5 0.1)', 'L(2.5 1.0)'
-        # small_bw_str, large_bw_str = 'C(100:100:1001)', '2000'
-        # half for debug first, large portion should be right btnk,
-        #   but also include some left btnk cases
-        small_bw_str = ['C(500:100:1501)', 'C(150:50:251)']
+        # Change to right bottleneck only now to avoid multi-btnk
+        small_bw_str = ['C(2000:100:2501)', 'C(150:50:251)']
         large_bw_str = '2000'
         cur_link_str_info = {
             'bw': [[small_bw_str[side] for _ in range(self.group['n_btnk'][side])]
