@@ -627,7 +627,7 @@ class ConfigGenerator:
                 # config inflation
                 cross_ratio = load_ratio - 5.17 * n_flow_per_btnk / 180
                 self.generate_cross(cross_bw_ratio=0.01,
-                                    cross_bw_ratio2=cross_ratio)
+                                    cross_bw_ratio2=round(cross_ratio, 4))
                 self.n_total.append(n_flow_per_btnk * n_right_btnk)
 
 
