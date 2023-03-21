@@ -609,7 +609,8 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [1] * 4, [4, 8, 12, 16]
         # total: 16 * 16 = 256 flows, if n_leaf = 1, then num = 16
         n_flow_per_btnk = 16
-        load_ratios = [0.9, 0.95, 1.0]
+        # higher than 1 as cross ratio cannot saturate every link w/ denomiator 180M
+        load_ratios = [0.92, 0.97, 1.02]
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         # qsize: 1.5 * BDP ~ 1.5 * 150Mbps * 20ms / 1500B = 375 pkts
         qsize_str = 'C(350:10:400)'
@@ -617,12 +618,14 @@ class ConfigGenerator:
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             for load_ratio in load_ratios:
                 link_str_info = {'bw': [['N(2500 5)'] * n_left_btnk,
-                                 ['C(100:10:151)'] * n_right_btnk]}
+                                 ['C(150:10:201)'] * n_right_btnk]}
                 self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
                 self.generate_link(n_leaf=1, link_str_info=link_str_info,
                                    qsize_str=qsize_str, qtype_str=qtype_str)
                 self.generate_flow(rate_str='C(2.5 5 8)', num_str=str(n_flow_per_btnk))
-                cross_ratio = load_ratio - 5 * n_flow_per_btnk / 100
+                # note the actual load_ratio depends on the actual right btnk bw after
+                # config inflation
+                cross_ratio = load_ratio - 5.17 * n_flow_per_btnk / 180
                 self.generate_cross(cross_bw_ratio=0.01,
                                     cross_bw_ratio2=cross_ratio)
                 self.n_total.append(n_flow_per_btnk * n_right_btnk)
