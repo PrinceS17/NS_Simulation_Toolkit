@@ -217,7 +217,8 @@ class ConfigGenerator:
         return res_df
 
     def generate_flow(self, dynamic_ratio=0.1, rate_str=None, num_str=None,
-                      start_str=None, end_str=None, n_total_users=None):
+                      start_str=None, end_str=None, n_total_users=None,
+                      delayed_ack=1):
         """Generate flow configs.
 
         Flow config: 'src', 'dst', 'src_gw', 'dst_gw', 'num', 'rate_mbps',
@@ -258,7 +259,7 @@ class ConfigGenerator:
                 src_gw, dst_gw = self.group['leaf_gw'][src], self.group['leaf_gw'][dst]
                 q1, q2 = self.group['gw_queue'][src_gw], self.group['gw_queue'][dst_gw]
                 row = [run_str, src, dst, src_gw, dst_gw, num_str, rate_str,
-                    2, start_str, end_str, q1, q2]
+                    delayed_ack, start_str, end_str, q1, q2]
                 cur_flow_data.append(row)
 
         self.data['flow'].extend(cur_flow_data)
