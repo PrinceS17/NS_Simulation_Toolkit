@@ -626,7 +626,8 @@ class ConfigGenerator:
                 self.generate_flow(rate_str='C(2.5 5 8)', num_str=str(n_flow_per_btnk))
                 # note the actual load_ratio depends on the actual right btnk bw after
                 # config inflation
-                cross_ratio = load_ratio - 5.17 * n_flow_per_btnk / 180
+                # TODO: 180 -> 210 to increase the congestion level
+                cross_ratio = load_ratio - 5.17 * n_flow_per_btnk / 210
                 self.generate_cross(cross_bw_ratio=0.01,
                                     cross_bw_ratio2=round(cross_ratio, 4))
                 self.n_total.append(n_flow_per_btnk * n_right_btnk)
