@@ -231,7 +231,7 @@ class ConfigGenerator:
         return res_df
 
     def generate_flow(self, dynamic_ratio=0.1, rate_str=None,
-                      start_str=None, end_str=None, delayed_ack=2,
+                      start_str=None, end_str=None, delayed_ack=1,
                       user_per_btnk=100, set_right_btnk=True):
         """Generate flow configs.
 
@@ -275,11 +275,27 @@ class ConfigGenerator:
             assert len(self.group['leaves'][side]) > 0
         for left_leaves in self.group['gw_leaf'][0].values():
             for right_leaves in self.group['gw_leaf'][1].values():
+                """
+                Example topology:
+                1 ---3 - 4 - []  --- 5
+                2 --/ ...        \-- 6
+                                  \- 7 
+
+                Btnk: 3-4, btnk side: left;
+                close leaves: 1, 2; far leaves: 5, 6, 7
+                n_path: 2 * 3 = 6, i.e. all paths passing through 3-4
+                """
                 btnk_side = 1 if set_right_btnk else 0
-                user_per_btnk_pair = int(user_per_btnk / len(self.group['gw_leaf'][1 - btnk_side]))
-                user_per_path = int(user_per_btnk_pair / (len(left_leaves) * len(right_leaves)))
+                n_close_leaves = len(left_leaves) if btnk_side == 0 else len(right_leaves)
+                n_far_leaves = len(self.group['leaves'][1 - btnk_side])
+                n_path = n_close_leaves * n_far_leaves
+                user_per_path = float(user_per_btnk / n_path)
+                print('btnk side', btnk_side, 'n_close_leaves', n_close_leaves,
+                      'n_far_leaves', n_far_leaves, 'n_path', n_path,
+                      'user_per_path', user_per_path)
                 # TODO: detail distribution TBD, maybe still P()
-                num_str = f'N({user_per_path} {round(user_per_path * 0.1, 2)})'
+                num_str = f'N({round(user_per_path, 2)} ' \
+                    f'{round(user_per_path * 0.15, 2)})'
                 for src in left_leaves:
                     for dst in right_leaves:
                         src_gw, dst_gw = self.group['leaf_gw'][src], self.group['leaf_gw'][dst]
@@ -407,7 +423,7 @@ class ConfigGenerator:
         else:
             btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [[f'C(250:50:{max_left_bw})'] * n_left_btnk,
+            link_str_info = {'bw': [[f'C(350:50:{max_left_bw})'] * n_left_btnk,
                              ['C(1000:100:1201)'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
