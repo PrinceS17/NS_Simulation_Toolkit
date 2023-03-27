@@ -354,12 +354,16 @@ class ConfigGenerator:
         start, end = self.group['sim_start'], self.group['sim_end']
 
         # cross_bw_ratios = ['U(0.05 0.95)', 'U(0.05 0.95)']
-        cross_bw_ratios = ['U(0.05 0.3)', 'U(0.05 0.3)']
+        cross_bw_ratios = ['U(0.5 0.7)', 'U(0.5 0.7)']
         if cross_bw_ratio is not None:
             cross_bw_ratios[0] = cross_bw_ratio
             cross_bw_ratios[1] = cross_bw_ratio
         if cross_bw_ratio2 is not None:
             cross_bw_ratios[1] = cross_bw_ratio2
+        lower_cross_ratio = list(map(lambda s: float(s[2:-1].split(' ')[0]),
+                                     cross_bw_ratios))
+        assert lower_cross_ratio[0] >= 0.3 or lower_cross_ratio[1] >= 0.3, \
+            'Critical: cross_bw_ratio too low to generate valid queue pattern!'
 
         cur_run_data = []
         for side in range(2):
@@ -403,9 +407,10 @@ class ConfigGenerator:
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf)
-            # 100 * 2Mbps ~ 200Mbps for right mid link
-            self.generate_flow(user_per_btnk=100, set_right_btnk=True)
-            self.generate_cross()
+            # 50 * 2Mbps ~ 100Mbps for right mid link
+            self.generate_flow(user_per_btnk=50, set_right_btnk=True)
+            self.generate_cross(cross_bw_ratio='U(0.02 0.05)',
+                                cross_bw_ratio2='U(0.5 0.7)')
 
     @record_output
     def generate_train_w_left_btnk(self, left_btnk_groups, right_btnk_groups,
@@ -427,9 +432,12 @@ class ConfigGenerator:
                              ['C(1000:100:1201)'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
-            # 200 * 2Mbps ~ 400Mbps for left mid link
-            self.generate_flow(user_per_btnk=200, set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
+            # 125 * 2Mbps ~ 250Mbps for left mid link
+            self.generate_flow(user_per_btnk=125, set_right_btnk=False)
+            # Note that cross bw ratio is critical for characterizing the queue
+            # and cannot be compromised for implementation reason!
+            # only close to cross_bw_ratio~0.4, bw > 450 Mbps, will we get non-btnk
+            self.generate_cross(cross_bw_ratio='U(0.4 0.7)')
 
     @record_output
     def generate_train_w_left_btnk_bkup(self, left_btnk_groups, right_btnk_groups,
@@ -469,8 +477,9 @@ class ConfigGenerator:
                              [f'C(150:50:{max_right_bw})'] * n_right_btnk]}
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(link_str_info=link_str_info)
-            self.generate_flow(user_per_btnk=100, set_right_btnk=True)
-            self.generate_cross(cross_bw_ratio='U(0.05 0.2)')
+            self.generate_flow(user_per_btnk=50, set_right_btnk=True)
+            self.generate_cross(cross_bw_ratio='U(0.02 0.05)',
+                                cross_bw_ratio2='U(0.5 0.7)')
 
     @record_output
     def generate_train_w_right_btnk_bkup(self, left_btnk_groups, right_btnk_groups,
