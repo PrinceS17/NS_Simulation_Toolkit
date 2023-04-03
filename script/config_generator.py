@@ -296,7 +296,7 @@ class ConfigGenerator:
                       'user_per_path', user_per_path)
                 # TODO: detail distribution TBD, maybe still P()
                 if deterministic_user_num:
-                    num_str = str(user_per_path)
+                    num_str = str(int(user_per_path))
                 else:
                     num_str = f'N({round(user_per_path, 2)} ' \
                         f'{round(user_per_path * 0.15, 2)})'
