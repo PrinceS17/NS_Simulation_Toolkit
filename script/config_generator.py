@@ -232,7 +232,8 @@ class ConfigGenerator:
 
     def generate_flow(self, dynamic_ratio=0.1, rate_str=None,
                       start_str=None, end_str=None, delayed_ack=1,
-                      user_per_btnk=100, set_right_btnk=True):
+                      user_per_btnk=100, set_right_btnk=True,
+                      deterministic_user_num=False):
         """Generate flow configs.
 
         The flow number now is set only allowed using user_per_btnk &
@@ -294,8 +295,11 @@ class ConfigGenerator:
                       'n_far_leaves', n_far_leaves, 'n_path', n_path,
                       'user_per_path', user_per_path)
                 # TODO: detail distribution TBD, maybe still P()
-                num_str = f'N({round(user_per_path, 2)} ' \
-                    f'{round(user_per_path * 0.15, 2)})'
+                if deterministic_user_num:
+                    num_str = str(user_per_path)
+                else:
+                    num_str = f'N({round(user_per_path, 2)} ' \
+                        f'{round(user_per_path * 0.15, 2)})'
                 for src in left_leaves:
                     for dst in right_leaves:
                         src_gw, dst_gw = self.group['leaf_gw'][src], self.group['leaf_gw'][dst]
@@ -691,7 +695,7 @@ class ConfigGenerator:
                 self.generate_link(n_leaf=1, link_str_info=link_str_info,
                                    qsize_str=qsize_str, qtype_str=qtype_str)
                 self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=n_flow_per_btnk,
-                                   set_right_btnk=True)
+                                   set_right_btnk=True, deterministic_user_num=True)
                 # note the actual load_ratio depends on the actual right btnk bw after
                 # config inflation
                 # TODO: 180 -> 210 to increase the congestion level
