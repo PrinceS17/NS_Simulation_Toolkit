@@ -15,7 +15,7 @@ is_test = False
 class MultiRun_Module:
     ''' Batch simulation scanning general parameter within specified range.'''
 
-    def __init__(self, folder=None, scpt=None, debug_time=None):
+    def __init__(self, folder=None, scpt=None, debug_time=None, config_path=None):
         self.path = ''       # path of current processing
         self.res_path = ''   # path of results: figs and logs
         self.scpt_path = ''  # path of script containing mPlotData.sh
@@ -37,9 +37,9 @@ class MultiRun_Module:
 
         root = os.getcwd()
         root = root[:root.find ('Toolkit') + 7]
-        self.path = os.path.join(root, 'BBR_test', 'ns-3.27') if not folder else folder
-        self.config_path = os.path.join(self.path, 'edb_configs')
-        self.scpt_path = os.path.join(root, 'script') if not scpt else scpt
+        self.path = folder or os.path.join(root, 'BBR_test', 'ns-3.27')
+        self.config_path = config_path or os.path.join(self.path, 'edb_configs')
+        self.scpt_path = scpt or os.path.join(root, 'script')
         print('root dir: {}'.format (root))
         print('ns path: %s' % self.path)
         print('scpt path: %s' % self.scpt_path)
@@ -56,17 +56,17 @@ class MultiRun_Module:
         self.thread_duration = []
         self.use_monitor = False
 
-    def _set_folder(self, tag):
+    def _set_folder(self, tag, res_path=None):
         subdir = f'results_{tag}_' + time.strftime('%b-%d-%H:%M:%S') + \
             str(random.randint(0, 100))
-        os.mkdir(subdir)
-        os.mkdir(os.path.join(subdir, 'logs'))
-        self.out = open(os.path.join(subdir, 'logs', 'run_log.txt'), 'w')
-        os.mkdir(os.path.join(subdir, 'figs'))
-        os.mkdir(os.path.join(subdir, 'dats'))
-        os.mkdir(os.path.join(subdir, 'cfgs'))
-        self.res_path = os.path.join(self.path, subdir)
+        self.res_path = res_path or os.path.join(self.path, subdir)
         self.cfg_out_path = os.path.join(self.res_path, 'cfgs')
+        os.makedirs(self.res_path)
+        os.makedirs(os.path.join(self.res_path, 'logs'))
+        self.out = open(os.path.join(self.res_path, 'logs', 'run_log.txt'), 'w')
+        os.makedirs(os.path.join(self.res_path, 'figs'))
+        os.makedirs(os.path.join(self.res_path, 'dats'))
+        os.makedirs(self.cfg_out_path)
 
     def parse(self, args):
         ''' Read input arguments from bash. Args format: -cInt 0.02:0.02:0.08 -nProtocol 1:1:8.
@@ -84,6 +84,7 @@ class MultiRun_Module:
         read_config_folder = False
         read_debug_time = False
         not_number = False
+        read_res_path = False
         for arg in args:
             if arg == '-test':
                 is_test = True
@@ -109,6 +110,8 @@ class MultiRun_Module:
             elif arg == '-config-folder':
                 print('check config-folder now')
                 read_config_folder = True
+            elif arg == '-res-path':
+                read_res_path = True
             elif arg == '-rebuild':
                 self.rebuild = True
             elif arg == '-overwrite-inflation':
@@ -132,8 +135,14 @@ class MultiRun_Module:
                 self.config_tag.extend([arg, arg + '_spec'])
                 read_config_tag = False
             elif read_config_folder:
-                self.config_path = os.path.join(self.config_path, arg)
+                if '/' not in arg:
+                    self.config_path = os.path.join(self.config_path, arg)
+                else:
+                    self.config_path = arg
                 read_config_folder = False
+            elif read_res_path:
+                res_path = arg
+                read_res_path = False
             elif arg[:2] == '--':       # used to specify non-number parameters
                 self.params.append(arg[2:])
                 not_number = True
@@ -152,7 +161,7 @@ class MultiRun_Module:
             else:
                 print('Error: parameters must be followed by a range!')
                 exit(1)
-        self._set_folder(self.config_tag[0])
+        self._set_folder(self.config_tag[0], res_path)
 
     def mark(self, name, value):
         ''' Mark each run with Co or NonCo. '''
@@ -670,7 +679,7 @@ if __name__ == "__main__":
         print("Usage: python multiRun.py [-config-tag base_tag spec_tag] [-config-folder subfolder]")
         print("                          [-rebuild] [-overwrite-inflation] [-jN_THREAD]")
         print("                          [-csv CSV] [-crosson] [-markon] [-changedat]")
-        print("                          [-debug-time start:end]")
+        print("                          [-debug-time start:end] [-res-path path]")
         print("     [-program PROGRAM_NAME] [-param1 MIN:STEP:MAX] [-param2 MIN:STEP:MAX] ...")
         print("     -test        run test cases.")
         print("     -crosson        include cross traffic.")
@@ -678,7 +687,10 @@ if __name__ == "__main__":
         print("     -changedat      change mid in dat file name to run ID.")
         print("     -csv CSV        use CSV for simulation settings instead of cmd arguments.")
         print("     -config-tag base_csv specific_csv   base & specific csv for extended dumbbell simulation scan.")
-        print("     -config-folder subfolder      subfolder under edb_configs for config files.")
+        print("     -config-folder path or subfolder    subfolder under edb_configs for config files.")
+        print("                     if provided one folder, then regarded as subfolder under edb_configs")
+        print("                     else, regarded as the whole config path")
+        print("     -res-path path    path to store the results, default is ns-3.27/result_xxx.")
         print("     -rebuild        compile and build the ns-3, necessary for avoiding collision among threads")
         print("     -overwrite-inflation   overwrite inflation even when previous inflated csv exists.")
         print("                     note that this only rewrites inflation in the output result dir but not edb configs")

@@ -836,6 +836,9 @@ if __name__ == '__main__':
         'runs.')
     
     arg_grp = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument('--root', '-r', type=str,
+                        default='../BBR_test/ns-3.27/edb_configs',
+                        help='Root folder of the project')
     parser.add_argument('--folder', '-f', type=str, default=None,
                         help='Folder to store configs')
     arg_grp.add_argument('--tag', '-t', type=str, default='config_gen',
@@ -878,7 +881,7 @@ if __name__ == '__main__':
         runner.run(suite())
         exit(0)
 
-    cgen = ConfigGenerator(args.folder, args.tag, args.note)
+    cgen = ConfigGenerator(args.folder, args.tag, args.note, args.root)
     if not args.profile:    
         cgen.generate(args.left_btnk_group, args.right_btnk_group, args.match_btnk,
                       args.n_run, args.start, args.end, args.n_leaf)
