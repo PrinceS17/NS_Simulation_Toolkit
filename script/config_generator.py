@@ -522,20 +522,20 @@ class ConfigGenerator:
             self.generate_cross(cross_bw_ratio='U(0.4 0.6)',
                                 cross_bw_ratio2='U(0 0.02)')
 
-    @record_output
-    def generate_one_to_n_bkup(self, n_run=4, sim_start=0.0, sim_end=30.0):
-        """One to N topology for basic test set, backup version.
-        """
-        n_leaf = 1
-        left_btnk_groups, right_btnk_groups = [1], [2, 4, 6]
-        btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
-        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [[f'C(200:50:401)'], [''] * n_right_btnk]}
-            self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
-            self.generate_link(link_str_info=link_str_info, max_leaf=[2,3])
-            self.generate_flow(user_per_btnk=100, set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio='U(0.3 0.5)',
-                                cross_bw_ratio2='U(0 0.02)')
+    # @record_output
+    # def generate_one_to_n_bkup(self, n_run=4, sim_start=0.0, sim_end=30.0):
+    #     """One to N topology for basic test set, backup version.
+    #     """
+    #     n_leaf = 1
+    #     left_btnk_groups, right_btnk_groups = [1], [2, 4, 6]
+    #     btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+    #     for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+    #         link_str_info = {'bw': [[f'C(200:50:401)'], [''] * n_right_btnk]}
+    #         self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+    #         self.generate_link(link_str_info=link_str_info, max_leaf=[2,3])
+    #         self.generate_flow(user_per_btnk=100, set_right_btnk=False)
+    #         self.generate_cross(cross_bw_ratio='U(0.3 0.5)',
+    #                             cross_bw_ratio2='U(0 0.02)')
 
     @record_output
     def generate_path_lag_scan(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -559,36 +559,80 @@ class ConfigGenerator:
     @record_output
     def generate_cross_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
                                  n_leaf=None):
-        """Generate cross load test set using 1 to 6 topology.
+        """Generate cross load test set using 1 to 4 topology.
         """
-        left_btnk_groups, right_btnk_groups = [1], [6] * 5
+        left_btnk_groups, right_btnk_groups = [1], [4] * 4
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(300 5)'], [''] * 6]}
+            link_str_info = {'bw': [['N(300 2)'], [''] * 6]}
+            cross_bw_ratio = 0.2 + i * 0.2      # 0.2, 0.4, 0.6, 0.8
+            avg_rate = np.mean([2.5, 5, 8])
+            user_per_btnk = (1.0 - cross_bw_ratio) * 300 / avg_rate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
-            self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=20,
+            self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
                                set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio=0.1 + i * 0.2,
+            self.generate_cross(cross_bw_ratio=cross_bw_ratio,
                                 cross_bw_ratio2=0.05)
             self.n_total.append(-20)
 
     @record_output
-    def generate_cross_load_scan_bkup(self, n_run=4, sim_start=0.0, sim_end=30.0,
-                                      n_leaf=None):
-        """Generate cross load test set using 1 to 6 topology. Backup version.
+    def generate_overall_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
+                                 n_leaf=None):
+        """Generate overall load test set using 1 to 4 topology.
         """
-        left_btnk_groups, right_btnk_groups = [1], [4] * 5
+        left_btnk_groups, right_btnk_groups = [1], [4] * 4
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(300 5)'], [''] * 4]}
+            link_str_info = {'bw': [['N(300 2)'], [''] * 6]}
+            cross_bw_ratio, load = 0.6, 0.7 + i * 0.1       # load: 0.7, 0.8, 0.9, 1.0
+            avg_rate = np.mean([2.5, 5, 8])
+            user_per_btnk = (load - cross_bw_ratio) * 300 / avg_rate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
-            self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=[2,3])
-            self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=20,
+            self.generate_link(n_leaf, link_str_info=link_str_info)
+            self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
                                set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio=0.1 + i * 0.2,
+            self.generate_cross(cross_bw_ratio=cross_bw_ratio,
                                 cross_bw_ratio2=0.05)
             self.n_total.append(-20)
+
+
+    # @record_output
+    # def generate_cross_load_scan_bkup(self, n_run=4, sim_start=0.0, sim_end=30.0,
+    #                                   n_leaf=None):
+    #     """Generate cross load test set using 1 to 6 topology. Backup version.
+    #     """
+    #     left_btnk_groups, right_btnk_groups = [1], [4] * 5
+    #     btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
+    #     for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+    #         link_str_info = {'bw': [['N(300 5)'], [''] * 4]}
+    #         self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+    #         self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=[2,3])
+    #         self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=20,
+    #                            set_right_btnk=False)
+    #         self.generate_cross(cross_bw_ratio=0.1 + i * 0.2,
+    #                             cross_bw_ratio2=0.05)
+    #         self.n_total.append(-20)
+
+    @record_output
+    def generate_large_flow_num_for_left(self, n_run=4, sim_start=0.0, sim_end=60.0):
+        """Generate large number of flow test set for left btnks.
+        """
+        left_btnk_groups, right_btnk_groups = [1, 2, 3, 4], [4] * 4
+        btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            link_str_info = {'bw': [['N(300 2)'] * n_left_btnk,
+                            [f'N(1000 5)'] * n_right_btnk]}
+            max_leaf = [2, 3]
+            for n_flow in [16, 32, 64, 128, 256, 512]:
+                self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+                self.generate_link(link_str_info=link_str_info, max_leaf=max_leaf)
+                # 100 * 2Mbps = 200Mbps for each right mid link
+                user_per_btnk = int(n_flow / n_left_btnk)
+                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=True)
+                avg_rate = 2.6      # for Youtube flow rates
+                self.generate_cross(cross_bw_ratio=1.0 - avg_rate * user_per_btnk / 300,
+                                    cross_bw_ratio2=0.05)
 
     @record_output
     def generate_large_flow_num(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -845,8 +889,10 @@ if __name__ == '__main__':
                         help='Tag for the config')
     parser.add_argument('--profile', '-p', type=str, default='',
                         choices=['', 'left-btnk', 'right-btnk', 'one-to-n',
-                        'path-lag', 'load-scan', 'large-flow', 'para-btnk',
-                        '3d',
+                        'path-lag', 'load-scan', 'overall-load-scan', 
+                        'large-flow-left',
+                        'large-flow', 'para-btnk', '3d',
+
                         'left-btnk-bkup', 'right-btnk-bkup', 'one-to-n-bkup',
                         'load-scan-bkup', 'large-flow-bkup',
                         'para-btnk-bkup'
@@ -899,14 +945,18 @@ if __name__ == '__main__':
                       args.match_btnk, args.n_run, args.start, args.end)
     elif args.profile == 'one-to-n':
         cgen.generate_one_to_n(args.n_run, args.start, args.end)
-    elif args.profile == 'one-to-n-bkup':
-        cgen.generate_one_to_n_bkup(args.n_run, args.start, args.end)
+    # elif args.profile == 'one-to-n-bkup':
+    #     cgen.generate_one_to_n_bkup(args.n_run, args.start, args.end)
     elif args.profile == 'path-lag':
         cgen.generate_path_lag_scan(args.n_run, args.start, args.end)
     elif args.profile == 'load-scan':
         cgen.generate_cross_load_scan(args.n_run, args.start, args.end, args.n_leaf)
-    elif args.profile == 'load-scan-bkup':
-        cgen.generate_cross_load_scan_bkup(args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile == 'overall-load-scan':
+        cgen.generate_overall_load_scan(args.n_run, args.start, args.end, args.n_leaf)
+    # elif args.profile == 'load-scan-bkup':
+    #     cgen.generate_cross_load_scan_bkup(args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile == 'large-flow-left':
+        cgen.generate_large_flow_num_for_left(args.n_run, args.start, args.end)
     elif args.profile == 'large-flow':
         cgen.generate_large_flow_num(args.n_run, args.start, args.end)
     elif args.profile == 'large-flow-bkup':
