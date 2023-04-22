@@ -183,7 +183,7 @@ class ConfigGenerator:
                 for i in range(len(link_str_info[k][side])):
                     if link_str_info[k][side][i]:
                         continue
-                    link_str_info[k][side][i] = small_bw_str if k == 'bw' \
+                    link_str_info[k][side][i] = large_bw_str if k == 'bw' \
                         else small_delay_str
         cur_link_str_info.update(link_str_info)
 
