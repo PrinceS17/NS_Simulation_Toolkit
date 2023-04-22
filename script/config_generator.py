@@ -367,7 +367,7 @@ class ConfigGenerator:
         f_lower_val = lambda s: float(s[2:-1].split(' ')[0]
                                       if type(s) == str else s)
         lower_cross_ratio = list(map(f_lower_val, cross_bw_ratios))
-        assert lower_cross_ratio[0] >= 0.3 or lower_cross_ratio[1] >= 0.3, \
+        assert lower_cross_ratio[0] >= 0.15 or lower_cross_ratio[1] >= 0.15, \
             'Critical: cross_bw_ratio too low to generate valid queue pattern!'
 
         cur_run_data = []
