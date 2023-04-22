@@ -615,16 +615,16 @@ class ConfigGenerator:
     #         self.n_total.append(-20)
 
     @record_output
-    def generate_large_flow_num_for_left(self, n_run=4, sim_start=0.0, sim_end=60.0):
+    def generate_large_flow_num_for_left(self, n_run=2, sim_start=0.0, sim_end=60.0):
         """Generate large number of flow test set for left btnks.
         """
         left_btnk_groups, right_btnk_groups = [1, 2, 3, 4], [4] * 4
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(300 2)'] * n_left_btnk,
-                            [f'N(1000 5)'] * n_right_btnk]}
+            link_str_info = {'bw': [['N(1000 2)'] * n_left_btnk,
+                            [f'N(2000 5)'] * n_right_btnk]}
             max_leaf = [2, 3]
-            for n_flow in [16, 32, 64, 128, 256, 512]:
+            for n_flow in [16, 32, 64, 128, 256]:
                 self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
                 self.generate_link(link_str_info=link_str_info, max_leaf=max_leaf)
                 # 100 * 2Mbps = 200Mbps for each right mid link
@@ -710,7 +710,7 @@ class ConfigGenerator:
             self.n_total.append(25 * 2 * n_right_btnk)
     
     @record_output
-    def generate_3d_scan(self, n_run=4, sim_start=0.0, sim_end=30.0):
+    def generate_3d_scan(self, n_run=2, sim_start=0.0, sim_end=30.0):
         """Generate small scale debug set to scan # of para btnks, load,
         and # of flows per btnk. Right btnks are used.
         
