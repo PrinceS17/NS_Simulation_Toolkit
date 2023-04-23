@@ -80,7 +80,8 @@ def inflate_rows(df_config, is_test):
         # field type processing
         if col in ['arrival_rate', 'mean_duration', 'pareto_index',
             'hurst', 'delay_ms', 'cross_bw_ratio', 'rate_mbps']:
-            return round(vals[0], 2)
+            # avoid 0 for duration/index/cross_bw_ratio
+            return max(round(vals[0], 3), 0.001)
         elif type(vals[0]) in [np.str_, str]:
             return vals[0]
         else:
