@@ -571,7 +571,7 @@ class ConfigGenerator:
 
     @record_output
     def generate_cross_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
-                                 n_leaf=None):
+                                 n_leaf=None, max_leaf=[2,3]):
         """Generate cross load test set using 1 to 4 topology.
         Here we keep flow number to be constant, and vary cross traffic bw
         as well as the link bw to change the cross bw ratio.
@@ -583,13 +583,13 @@ class ConfigGenerator:
             user_per_btnk = 20
             avg_rate = np.mean([2.5, 5, 8])
             cross_bw = (i + 1) * 50
-            link_bw = cross_bw + user_per_btnk * avg_rate
-            cross_bw_ratio = cross_bw / link_bw
-            link_str_info = {'bw': [[f'N({link_bw:.1f} 2)'], [''] * 4]}
+            btnk_bw = cross_bw + user_per_btnk * avg_rate
+            cross_bw_ratio = cross_bw / btnk_bw
+            link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
 
             # generate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
-            self.generate_link(n_leaf, link_str_info=link_str_info)
+            self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=max_leaf)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
                                set_right_btnk=False)
             self.generate_cross(cross_bw_ratio=cross_bw_ratio,
@@ -598,7 +598,7 @@ class ConfigGenerator:
 
     @record_output
     def generate_overall_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
-                                 n_leaf=None):
+                                 n_leaf=None, max_leaf=[2,3]):
         """Generate overall load test set using 1 to 4 topology.
         We keep flow number and cross bw to be both constant, and vary link bw
         to change the overall load.
@@ -610,13 +610,13 @@ class ConfigGenerator:
             user_per_btnk = 20
             # avg_rate = np.mean([2.5, 5, 8])
             cross_bw = 100
-            link_bw = 200 + i * 20
-            cross_bw_ratio = cross_bw / link_bw
-            link_str_info = {'bw': [[f'N({link_bw:.1f} 2)'], [''] * 4]}
+            btnk_bw = 200 + i * 20
+            cross_bw_ratio = cross_bw / btnk_bw
+            link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
 
             # generate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
-            self.generate_link(n_leaf, link_str_info=link_str_info)
+            self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=max_leaf)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
                                set_right_btnk=False)
             self.generate_cross(cross_bw_ratio=cross_bw_ratio,
@@ -648,7 +648,8 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [1, 2, 3, 4], [4] * 4
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(1000 2)'] * n_left_btnk,
+            btnk_bw = 1000
+            link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
                             [f'N(2000 5)'] * n_right_btnk]}
             max_leaf = [2, 3]
             for n_flow in [16, 32, 64, 128, 256]:
@@ -658,7 +659,8 @@ class ConfigGenerator:
                 user_per_btnk = int(n_flow / n_left_btnk)
                 self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=True)
                 avg_rate = 2.6      # for Youtube flow rates
-                self.generate_cross(cross_bw_ratio=1.0 - avg_rate * user_per_btnk / 300,
+                cross_bw_ratio = 1.0 - avg_rate * user_per_btnk / btnk_bw
+                self.generate_cross(cross_bw_ratio=cross_bw_ratio,
                                     cross_bw_ratio2=0.05)
 
     @record_output
