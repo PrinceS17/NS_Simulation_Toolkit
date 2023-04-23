@@ -61,7 +61,7 @@ class MultiRun_Module:
             str(random.randint(0, 100))
         self.res_path = res_path or os.path.join(self.path, subdir)
         self.cfg_out_path = os.path.join(self.res_path, 'cfgs')
-        os.makedirs(self.res_path)
+        os.makedirs(self.res_path, exist_ok=True)
         os.makedirs(os.path.join(self.res_path, 'logs'))
         self.out = open(os.path.join(self.res_path, 'logs', 'run_log.txt'), 'w')
         os.makedirs(os.path.join(self.res_path, 'figs'))
