@@ -442,7 +442,8 @@ class ConfigGenerator:
             # Note that cross bw ratio is critical for characterizing the queue
             # and cannot be compromised for implementation reason!
             # only close to cross_bw_ratio~0.4, bw > 450 Mbps, will we get non-btnk
-            self.generate_cross(cross_bw_ratio='U(0.4 0.7)')
+            self.generate_cross(cross_bw_ratio='U(0.4 0.7)',
+                                cross_bw_ratio2='U(0.0 0.05)')
 
     @record_output
     def generate_train_w_left_btnk_bkup(self, left_btnk_groups, right_btnk_groups,
@@ -520,7 +521,7 @@ class ConfigGenerator:
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow(user_per_btnk=100, set_right_btnk=False)
             self.generate_cross(cross_bw_ratio='U(0.4 0.6)',
-                                cross_bw_ratio2='U(0 0.02)')
+                                cross_bw_ratio2='U(0 0.005)')
 
     # @record_output
     # def generate_one_to_n_bkup(self, n_run=4, sim_start=0.0, sim_end=30.0):
@@ -553,7 +554,8 @@ class ConfigGenerator:
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=30,
                                set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio='U(0.5 0.6)')
+            self.generate_cross(cross_bw_ratio='U(0.5 0.6)',
+                                cross_bw_ratio2='U(0 0.005)')
             self.n_total.append(-20)
 
 # TODO: issue current cross/overall load scan: n_flow changes! invalid to compare!
@@ -648,18 +650,21 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [1, 2, 3, 4], [4] * 4
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            btnk_bw = 1000
-            link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
-                            [f'N(2000 5)'] * n_right_btnk]}
             max_leaf = [2, 3]
             for n_flow in [16, 32, 64, 128, 256]:
+                # keep user rate & cross bw ratio to be constant, thus we can
+                #  1) make sure the cross traffic pattern is similar & not too small
+                #  2) also avoid using high btnk_bw (1G) for large n_btnk to save time
+                user_per_btnk = int(n_flow / n_left_btnk)
+                avg_rate = 2.6      # for Youtube flow rates
+                cross_bw_ratio = 0.6
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.95
+                
+                link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
+                                [f'N(2000 5)'] * n_right_btnk]}
                 self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
                 self.generate_link(link_str_info=link_str_info, max_leaf=max_leaf)
-                # 100 * 2Mbps = 200Mbps for each right mid link
-                user_per_btnk = int(n_flow / n_left_btnk)
-                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=True)
-                avg_rate = 2.6      # for Youtube flow rates
-                cross_bw_ratio = 1.0 - avg_rate * user_per_btnk / btnk_bw
+                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=False)
                 self.generate_cross(cross_bw_ratio=cross_bw_ratio,
                                     cross_bw_ratio2=0.05)
 
