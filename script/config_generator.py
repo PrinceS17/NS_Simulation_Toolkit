@@ -556,18 +556,38 @@ class ConfigGenerator:
             self.generate_cross(cross_bw_ratio='U(0.5 0.6)')
             self.n_total.append(-20)
 
+# TODO: issue current cross/overall load scan: n_flow changes! invalid to compare!
+#   Solution:
+#       1. cross load scan: Same total flow rate,
+#           different cross traffic bw (abs value),
+#           different link bw, & keep the ratio to be ~1.0
+#       2. overall load scan: Same total flow rate,
+#           same cross traffic bw (abs value),
+#           different link bw to change the overall load i.e. traffic ratio. 
+#   Implementation:
+#       - generate_cross() using abs cross traffic bw
+#       - change link bw in link_str_info below to vary among loads
+
+
     @record_output
     def generate_cross_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
                                  n_leaf=None):
         """Generate cross load test set using 1 to 4 topology.
+        Here we keep flow number to be constant, and vary cross traffic bw
+        as well as the link bw to change the cross bw ratio.
         """
         left_btnk_groups, right_btnk_groups = [1], [4] * 4
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(300 2)'], [''] * 6]}
-            cross_bw_ratio = 0.2 + i * 0.2      # 0.2, 0.4, 0.6, 0.8
+            # user rate ~ 100M, cross bw [50, 100, 150, 200]M
+            user_per_btnk = 20
             avg_rate = np.mean([2.5, 5, 8])
-            user_per_btnk = (1.0 - cross_bw_ratio) * 300 / avg_rate
+            cross_bw = (i + 1) * 50
+            link_bw = cross_bw + user_per_btnk * avg_rate
+            cross_bw_ratio = cross_bw / link_bw
+            link_str_info = {'bw': [[f'N({link_bw:.1f} 2)'], [''] * 4]}
+
+            # generate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
@@ -580,14 +600,21 @@ class ConfigGenerator:
     def generate_overall_load_scan(self, n_run=4, sim_start=0.0, sim_end=60.0,
                                  n_leaf=None):
         """Generate overall load test set using 1 to 4 topology.
+        We keep flow number and cross bw to be both constant, and vary link bw
+        to change the overall load.
         """
         left_btnk_groups, right_btnk_groups = [1], [4] * 4
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            link_str_info = {'bw': [['N(300 2)'], [''] * 6]}
-            cross_bw_ratio, load = 0.6, 0.7 + i * 0.1       # load: 0.7, 0.8, 0.9, 1.0
-            avg_rate = np.mean([2.5, 5, 8])
-            user_per_btnk = (load - cross_bw_ratio) * 300 / avg_rate
+            # user rate ~ 100M, cross bw 100M, link bw [200, 220, 240, 260]M
+            user_per_btnk = 20
+            # avg_rate = np.mean([2.5, 5, 8])
+            cross_bw = 100
+            link_bw = 200 + i * 20
+            cross_bw_ratio = cross_bw / link_bw
+            link_str_info = {'bw': [[f'N({link_bw:.1f} 2)'], [''] * 4]}
+
+            # generate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
