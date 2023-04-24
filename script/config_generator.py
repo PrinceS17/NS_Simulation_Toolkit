@@ -581,21 +581,22 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [1], [4] * 4
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            # user rate ~ 100M, cross bw [50, 100, 150, 200]M
+            # user rate ~ 100M
             user_per_btnk = 20
             avg_rate = np.mean([2.5, 5, 8])
-            cross_bw = (i + 1) * 50
-            btnk_bw = cross_bw + user_per_btnk * avg_rate
+            cross_bw = (i + 1) * 40
+            btnk_bw = (cross_bw + user_per_btnk * avg_rate) * 0.95
             cross_bw_ratio = cross_bw / btnk_bw
-            link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
+            # link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
+            link_str_info = {'bw': [[''], [f'N({btnk_bw:.1f} 2)'] * 4]}
 
             # generate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=max_leaf)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
-                               set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio=cross_bw_ratio,
-                                cross_bw_ratio2=0.05)
+                               set_right_btnk=True)
+            self.generate_cross(cross_bw_ratio=0.05,
+                                cross_bw_ratio2=cross_bw_ratio)
             self.n_total.append(-20)
 
     @record_output
@@ -609,20 +610,21 @@ class ConfigGenerator:
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             # user rate ~ 100M, cross bw 100M, link bw [200, 220, 240, 260]M
-            user_per_btnk = 20
+            user_per_btnk = 10
             # avg_rate = np.mean([2.5, 5, 8])
             cross_bw = 100
-            btnk_bw = 200 + i * 20
+            btnk_bw = 130 + i * 20
             cross_bw_ratio = cross_bw / btnk_bw
-            link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
+            # link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
+            link_str_info = {'bw': [[''], [f'N({btnk_bw:.1f} 2)'] * 4]}
 
             # generate
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info, max_leaf=max_leaf)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=user_per_btnk,
-                               set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio=cross_bw_ratio,
-                                cross_bw_ratio2=0.05)
+                               set_right_btnk=True)
+            self.generate_cross(cross_bw_ratio=0.05,
+                                cross_bw_ratio2=cross_bw_ratio)
             self.n_total.append(-20)
 
 
