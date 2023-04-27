@@ -578,14 +578,14 @@ class ConfigGenerator:
         Here we keep flow number to be constant, and vary cross traffic bw
         as well as the link bw to change the cross bw ratio.
         """
-        left_btnk_groups, right_btnk_groups = [1], [4] * 4
+        left_btnk_groups, right_btnk_groups = [1], [4] * 5
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            # user rate ~ 100M
+            # user rate ~ 100M, scan the cross traffic of the link
             user_per_btnk = 20
             avg_rate = np.mean([2.5, 5, 8])
-            cross_bw = (i + 1) * 40
-            btnk_bw = (cross_bw + user_per_btnk * avg_rate) * 0.95
+            cross_bw = (i + 1) * 30
+            btnk_bw = (cross_bw + user_per_btnk * avg_rate) * 0.9
             cross_bw_ratio = cross_bw / btnk_bw
             # link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
             link_str_info = {'bw': [[''], [f'N({btnk_bw:.1f} 2)'] * 4]}
@@ -609,7 +609,7 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [1], [4] * 4
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            # user rate ~ 100M, cross bw 100M, link bw [200, 220, 240, 260]M
+            # user rate ~ 100M, cross bw 100M
             user_per_btnk = 10
             # avg_rate = np.mean([2.5, 5, 8])
             cross_bw = 100
