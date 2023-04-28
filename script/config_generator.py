@@ -660,13 +660,14 @@ class ConfigGenerator:
                 user_per_btnk = int(n_flow / n_left_btnk)
                 avg_rate = 2.6      # for Youtube flow rates
                 cross_bw_ratio = 0.6
-                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.95
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.9
                 
                 link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
                                 [f'N(2000 5)'] * n_right_btnk]}
                 self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
                 self.generate_link(link_str_info=link_str_info, max_leaf=max_leaf)
-                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=False)
+                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=False,
+                                   deterministic_user_num=True) # for static scan in figure
                 self.generate_cross(cross_bw_ratio=cross_bw_ratio,
                                     cross_bw_ratio2=0.05)
 
