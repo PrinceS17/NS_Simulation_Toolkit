@@ -85,7 +85,9 @@ def inflate_rows(df_config, is_test):
         elif type(vals[0]) in [np.str_, str]:
             return vals[0]
         else:
-            return int(np.ceil(vals[0]))
+            new_val = int(np.ceil(vals[0]))
+            assert new_val > 0, f'Invalid value: {new_val}'
+            return new_val
 
     def _dfs(cur_row, i, last_run, j_static, increase_run, result):
         # a recursion for row compilation

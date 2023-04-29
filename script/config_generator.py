@@ -296,7 +296,7 @@ class ConfigGenerator:
                       'user_per_path', user_per_path)
                 # TODO: detail distribution TBD, maybe still P()
                 if deterministic_user_num:
-                    num_str = str(int(user_per_path))
+                    num_str = str(max(1, int(user_per_path)))
                 else:
                     num_str = f'N({round(user_per_path, 2)} ' \
                         f'{round(user_per_path * 0.15, 2)})'
@@ -653,13 +653,13 @@ class ConfigGenerator:
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             max_leaf = [2, 3]
-            for n_flow in [16, 32, 64, 128, 256]:
+            for n_flow in [32, 64, 128, 256, 512]:
                 # keep user rate & cross bw ratio to be constant, thus we can
                 #  1) make sure the cross traffic pattern is similar & not too small
                 #  2) also avoid using high btnk_bw (1G) for large n_btnk to save time
                 user_per_btnk = int(n_flow / n_left_btnk)
                 avg_rate = 2.6      # for Youtube flow rates
-                cross_bw_ratio = 0.6
+                cross_bw_ratio = 0.5
                 btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.9
                 
                 link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
@@ -670,6 +670,40 @@ class ConfigGenerator:
                                    deterministic_user_num=True) # for static scan in figure
                 self.generate_cross(cross_bw_ratio=cross_bw_ratio,
                                     cross_bw_ratio2=0.05)
+
+    @record_output
+    def generate_2d_scan(self, n_run=2, sim_start=0.0, sim_end=60.0):
+        """Generate 2D scan testset, i.e. scan n_para_btnk (right here) and n_flow.
+        In this scenario, we maintain the following invariants:
+            1) congested user rate per flow;
+            2) user traffic ratio per link;
+        And divide the queue size in proportion to the number of bottlenecks.
+        Our key idea is to make sure that links are similar w/ different parallel
+        bottlenecks, i.e. if ratio is 2, the 2 smaller links should be able to to
+        merge into a link that is equivalent to the larger link.
+        """
+        left_btnk_groups, right_btnk_groups = [1] * 4, [4, 8, 12, 16]
+        btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        qsize_for_one = 2000
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            max_leaf = [2, 3]
+            # n_flow is the common multiple of (4,8,12,16) to avoid clean division
+            for n_flow in [48, 96, 144, 192, 240]:
+                user_per_btnk = int(n_flow / n_right_btnk)
+                avg_rate = 2.6
+                cross_bw_ratio = 0.5
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.9
+                link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
+                                        [f'N({btnk_bw} 2)'] * n_right_btnk]}
+                qsize_str = f'N({qsize_for_one / n_right_btnk:.1f} 5)'
+
+                self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+                self.generate_link(link_str_info=link_str_info, max_leaf=max_leaf,
+                                   qsize_str=qsize_str)
+                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=True,
+                                   deterministic_user_num=True)
+                self.generate_cross(cross_bw_ratio=0.01,
+                                    cross_bw_ratio2=cross_bw_ratio)
 
     @record_output
     def generate_large_flow_num(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -928,8 +962,7 @@ if __name__ == '__main__':
                         choices=['', 'left-btnk', 'right-btnk', 'one-to-n',
                         'path-lag', 'load-scan', 'overall-load-scan', 
                         'large-flow-left',
-                        'large-flow', 'para-btnk', '3d',
-
+                        'large-flow', 'para-btnk', '3d', '2d',
                         'left-btnk-bkup', 'right-btnk-bkup', 'one-to-n-bkup',
                         'load-scan-bkup', 'large-flow-bkup',
                         'para-btnk-bkup'
@@ -1004,3 +1037,5 @@ if __name__ == '__main__':
         cgen.generate_para_btnk_bkup(args.n_run, args.start, args.end)
     elif args.profile == '3d':
         cgen.generate_3d_scan(args.n_run, args.start, args.end)
+    elif args.profile == '2d':
+        cgen.generate_2d_scan(args.n_run, args.start, args.end)
