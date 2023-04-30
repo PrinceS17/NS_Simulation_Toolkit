@@ -296,7 +296,7 @@ class ConfigGenerator:
                       'user_per_path', user_per_path)
                 # TODO: detail distribution TBD, maybe still P()
                 if deterministic_user_num:
-                    num_str = str(max(1, int(user_per_path)))
+                    num_str = str(max(1, int(np.ceil(user_per_path))))
                 else:
                     num_str = f'N({round(user_per_path, 2)} ' \
                         f'{round(user_per_path * 0.15, 2)})'
@@ -660,7 +660,7 @@ class ConfigGenerator:
                 user_per_btnk = int(n_flow / n_left_btnk)
                 avg_rate = 2.6      # for Youtube flow rates
                 cross_bw_ratio = 0.5
-                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.9
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.85
                 
                 link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
                                 [f'N(2000 5)'] * n_right_btnk]}
@@ -692,7 +692,7 @@ class ConfigGenerator:
                 user_per_btnk = int(n_flow / n_right_btnk)
                 avg_rate = 2.6
                 cross_bw_ratio = 0.5
-                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.9
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.85
                 link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
                                         [f'N({btnk_bw} 2)'] * n_right_btnk]}
                 qsize_str = f'N({qsize_for_one / n_right_btnk:.1f} 5)'
