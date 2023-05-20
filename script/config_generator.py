@@ -68,6 +68,7 @@ class ConfigGenerator:
             # self.data[typ] = {k: [] for k in ['run'] + cols}
             self.data[typ] = []
         self.n_total = []
+        self.args = []
 
     def init_group(self, n_left_btnk, n_right_btnk, n_run=10, sim_start=0, sim_end=600):
         self.group = {
@@ -146,6 +147,13 @@ class ConfigGenerator:
             f.write(self.note)
             f.write(n_user_note)
         print(f'Output note: {note}')
+
+    def output_args(self):
+        df = pd.DataFrame(self.args, columns=['mode', 'lb', 'rb',
+            'btnk_bw', 'cong_lv', 'cross_bw_ratio', 'user_per_btnk', 'user_ratio'])
+        args = os.path.join(self.folder, f'{self.tag}_args.csv')
+        df.to_csv(args, index=False)
+        print(f'Output args: {args}')
 
     def generate_link(self, n_leaf=None, link_str_info={}, max_leaf=None,
                       qsize_str='C(100:100:501)', qtype_str='C(pie codel)'):
@@ -291,9 +299,9 @@ class ConfigGenerator:
                 n_far_leaves = len(self.group['leaves'][1 - btnk_side])
                 n_path = n_close_leaves * n_far_leaves
                 user_per_path = float(user_per_btnk / n_path)
-                print('btnk side', btnk_side, 'n_close_leaves', n_close_leaves,
-                      'n_far_leaves', n_far_leaves, 'n_path', n_path,
-                      'user_per_path', user_per_path)
+                # print('btnk side', btnk_side, 'n_close_leaves', n_close_leaves,
+                #       'n_far_leaves', n_far_leaves, 'n_path', n_path,
+                #       'user_per_path', user_per_path)
                 # TODO: detail distribution TBD, maybe still P()
                 if deterministic_user_num:
                     num_str = str(max(1, int(np.ceil(user_per_path))))
@@ -396,7 +404,88 @@ class ConfigGenerator:
                 self.output_csv(typ, is_spec=True)
             self.output_cmd()
             self.output_note()
+            self.output_args()
         return wrapper
+
+    def template_generate(self, mode, n_left_btnk, n_right_btnk, btnk_bw, cong_lv,
+                          cross_bw_ratio, user_per_btnk=None, n_run=2,
+                          sim_start=0.0, sim_end=60.0):
+        """Template function for generating data with different parameters and
+        supporting generate_all for finer grained control. This is only for generating
+        one or two runs, and deemphasize the random generation at inflator."""
+        user_rate, user_ratio = 2.6, cong_lv - cross_bw_ratio
+        user_per_btnk = user_per_btnk or btnk_bw * (cong_lv - cross_bw_ratio) / user_rate
+        assert user_per_btnk > 0, 'user_per_btnk must be positive!'
+        print(f' mode {mode} lb {n_left_btnk} rb {n_right_btnk} '
+              f'btnk_bw {btnk_bw:.1f} cong_lv {cong_lv:.2f} cross_bw_ratio {cross_bw_ratio:.2f} '
+              f'user_per_btnk {user_per_btnk:.1f} user_rate {user_rate * user_per_btnk:.1f}')
+        self.args.append([mode, n_left_btnk, n_right_btnk, btnk_bw, cong_lv,
+                             cross_bw_ratio, user_per_btnk, user_ratio])
+        if 'left' in mode:
+            left_bw, right_bw = btnk_bw, 1000
+            cross_bw_ratio1, cross_bw_ratio2 = cross_bw_ratio, 'U(0.0 0.05)'
+        else:
+            left_bw, right_bw = 1500, btnk_bw
+            cross_bw_ratio1, cross_bw_ratio2 = 'U(0.0 0.05)', cross_bw_ratio
+        link_str_info = {'bw': [[f'N({left_bw} 1)'] * n_left_btnk,
+                            [f'N({right_bw} 1)'] * n_right_btnk]}
+        self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+        self.generate_link(link_str_info=link_str_info)
+        self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk='right' in mode)
+        self.generate_cross(cross_bw_ratio=cross_bw_ratio1,
+                            cross_bw_ratio2=cross_bw_ratio2)
+
+    @record_output
+    def generate_all(self, mode='left_small', n_sample=5, n_run=3,
+                     sim_start=0.0, sim_end=60.0):
+        """The function for the final dataset generation.
+        Mode is used to differentiate between small and large number of bottlenecks,
+        and can be chosen from ['left_small', 'left_large', 'right_small', 'right_large'].
+
+        Total # of runs for each mode:
+            10 cong_lv * 2 run for one btnk
+            left_small: 160 runs; right_small: 160 runs
+            left_large: 100 runs; right_large: 200 runs
+
+        Trial: 5 cong_lv * 1 run, then 40, 40, 25, 50 runs.
+
+        Desired: 1080 runs in total.
+            240 (10 * 3 run), 240 (10 * 3 run), 200 (10 * 4 run), 400 (10 * 4 run)
+        
+        First round: 540 runs, like above except 5 cong lv, i.e.,
+            120, 120, 100, 200
+        """
+        # previous: 
+        #           left/right: lb 2 2 3 4 rb 5 6 4 4
+        #           large: lb 2 3 rb 8 12 16
+        btnk_grps = {
+            'left-small': [(2, 2), (2, 3), (2, 4), (2, 5), (2, 6),
+                           (3, 3), (3, 4), (4, 4)],
+            'left-large': [(2, 8), (2, 10), (2, 12), (2, 14), (2, 16)],       # not tested
+            'right-small': [(2, 2), (2, 3), (2, 4), (2, 5), (2, 6),
+                            (3, 3), (3, 4), (4, 4)],
+            'right-large': [(2, 8), (2, 10), (2, 12), (2, 14), (2, 16),
+                            (3, 8), (3, 10), (3, 12), (3, 14), (3, 16)],
+        }
+        btnk_bws = {
+            'left-small': range(300, 501, 50),
+            'left-large': range(500, 1001, 50),     # never tested
+            'right-small': range(150, 301, 50),     # 250 -> 300M for max
+            'right-large': range(150, 301, 50),
+        }
+        n_runs = {'left-small': 3, 'left-large': 4,
+                  'right-small': 3, 'right-large': 4}
+        cong_lv_min, cong_lv_max = 0.95, 2.0
+        for n_left_btnk, n_right_btnk in btnk_grps[mode]:
+            for _ in range(n_sample):
+                btnk_bw = np.random.choice(btnk_bws[mode])
+                cong_lv = np.random.uniform(cong_lv_min, cong_lv_max)
+                # there are both no signals when cong_lv is too small or too large
+                cong_lv = min(2.0, max(0.9, np.random.normal(1.15, 0.1)))
+                cross_bw_ratio = np.random.uniform(0.2, 0.8)        # larger range now
+                self.template_generate(mode, n_left_btnk, n_right_btnk, btnk_bw, cong_lv,
+                    cross_bw_ratio, n_run=n_runs[mode], sim_start=sim_start, sim_end=sim_end)
+
 
     @record_output
     def generate(self, left_btnk_groups, right_btnk_groups, match_btnk=False,
@@ -548,7 +637,7 @@ class ConfigGenerator:
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {
                 'bw': [['N(200 5)'] * 2, [''] * 2],
-                'delay': [[''] * 2, ['10', f'N({(i + 1) * 20} 3)']]
+                'delay': [[''] * 2, ['10', f'N({(i + 1) * 50 + 10} 3)']]
             }
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
@@ -606,14 +695,15 @@ class ConfigGenerator:
         We keep flow number and cross bw to be both constant, and vary link bw
         to change the overall load.
         """
-        left_btnk_groups, right_btnk_groups = [1], [4] * 4
+        left_btnk_groups, right_btnk_groups = [1], [4] * 5
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             # user rate ~ 100M, cross bw 100M
             user_per_btnk = 10
             # avg_rate = np.mean([2.5, 5, 8])
             cross_bw = 100
-            btnk_bw = 130 + i * 20
+            # btnk_bw = 130 + i * 20
+            btnk_bw = 60 + i * 30
             cross_bw_ratio = cross_bw / btnk_bw
             # link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
             link_str_info = {'bw': [[''], [f'N({btnk_bw:.1f} 2)'] * 4]}
@@ -653,14 +743,15 @@ class ConfigGenerator:
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             max_leaf = [2, 3]
-            for n_flow in [32, 64, 128, 256, 512]:
+            # for n_flow in [32, 64, 128, 256, 512]:
+            for n_flow in [50, 100, 150, 200, 250]:
                 # keep user rate & cross bw ratio to be constant, thus we can
                 #  1) make sure the cross traffic pattern is similar & not too small
                 #  2) also avoid using high btnk_bw (1G) for large n_btnk to save time
                 user_per_btnk = int(n_flow / n_left_btnk)
                 avg_rate = 2.6      # for Youtube flow rates
-                cross_bw_ratio = 0.5
-                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.85
+                cross_bw_ratio = 0.3
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.8
                 
                 link_str_info = {'bw': [[f'N({btnk_bw} 2)'] * n_left_btnk,
                                 [f'N(2000 5)'] * n_right_btnk]}
@@ -688,11 +779,12 @@ class ConfigGenerator:
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             max_leaf = [2, 3]
             # n_flow is the common multiple of (4,8,12,16) to avoid clean division
-            for n_flow in [48, 96, 144, 192, 240]:
+            # for n_flow in [48, 96, 144, 192, 240]:
+            for n_flow in [50, 100, 200, 400, 800]:
                 user_per_btnk = int(n_flow / n_right_btnk)
                 avg_rate = 2.6
-                cross_bw_ratio = 0.5
-                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.85
+                cross_bw_ratio = 0.3
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.8
                 link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
                                         [f'N({btnk_bw} 2)'] * n_right_btnk]}
                 qsize_str = f'N({qsize_for_one / n_right_btnk:.1f} 5)'
@@ -965,7 +1057,8 @@ if __name__ == '__main__':
                         'large-flow', 'para-btnk', '3d', '2d',
                         'left-btnk-bkup', 'right-btnk-bkup', 'one-to-n-bkup',
                         'load-scan-bkup', 'large-flow-bkup',
-                        'para-btnk-bkup'
+                        'para-btnk-bkup',
+                        'left-small', 'right-small', 'left-large', 'right-large',
                         ],
                         help='Profile for the config generation')
     parser.add_argument('--note', '-nt', type=str, default='',
@@ -1001,6 +1094,9 @@ if __name__ == '__main__':
     if not args.profile:    
         cgen.generate(args.left_btnk_group, args.right_btnk_group, args.match_btnk,
                       args.n_run, args.start, args.end, args.n_leaf)
+    elif args.profile in ['left-small', 'right-small', 'left-large', 'right-large']:
+        # intend to use for the official dataset generation
+        cgen.generate_all(args.profile, sim_start=args.start, sim_end=args.end)
     elif args.profile == 'left-btnk':
         cgen.generate_train_w_left_btnk(args.left_btnk_group, args.right_btnk_group,
                       args.match_btnk, args.n_run, args.start, args.end)
