@@ -270,7 +270,7 @@ class ConfigGenerator:
         assert start >= 0 and end - dynamic_window >= 0
         run_str = self.group['run_str']
         # rate_str = 'L(2.5 1.3225)'
-        rate_str = 'Y()' if not rate_str else rate_str
+        rate_str = rate_str or 'Y()'
         if start_str is None:
             start_str = f'U({start} {start + dynamic_window})'
         if end_str is None:
@@ -630,20 +630,21 @@ class ConfigGenerator:
     @record_output
     def generate_path_lag_scan(self, n_run=4, sim_start=0.0, sim_end=60.0):
         """Generate path lag test set using 2x2 architecture.
+        TODO: note current config is not run yet!
         """
         n_leaf = 1
-        left_btnk_groups, right_btnk_groups = [2] * 6, [2] * 6
+        left_btnk_groups, right_btnk_groups = [4] * 5, [4] * 5
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             link_str_info = {
-                'bw': [['N(200 5)'] * 2, [''] * 2],
-                'delay': [[''] * 2, ['10', f'N({(i + 1) * 50 + 10} 3)']]
+                'bw': [['N(200 5)'] * 4, [''] * 4],
+                'delay': [[''] * 4, ['10'] * 2 + [f'N({(i + 1) * 40 + 10} 1)'] * 2]
             }
             self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
             self.generate_link(n_leaf, link_str_info=link_str_info)
             self.generate_flow(rate_str='C(2.5 5 8)', user_per_btnk=30,
                                set_right_btnk=False)
-            self.generate_cross(cross_bw_ratio='U(0.5 0.6)',
+            self.generate_cross(cross_bw_ratio='U(0.3 0.4)',
                                 cross_bw_ratio2='U(0 0.005)')
             self.n_total.append(-20)
 
@@ -698,14 +699,22 @@ class ConfigGenerator:
         left_btnk_groups, right_btnk_groups = [1], [4] * 5
         btnk_grp = itertools.product(left_btnk_groups, right_btnk_groups)
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
-            # user rate ~ 100M, cross bw 100M
-            user_per_btnk = 10
+            # [Not run] keep btnk_bw and cross_user ratio the same
+            # cong_lv = 0.8 + i * 0.2
+            # btnk_bw = 150
+            # total_app_rate = 150 * cong_lv
             # avg_rate = np.mean([2.5, 5, 8])
+            # user_per_btnk = int(total_app_rate * 0.7 / avg_rate)
+            # cross_bw_ratio = total_app_rate * 0.3 / btnk_bw
+
+            # original: keep user the same
+            user_per_btnk = 10
             cross_bw = 100
             # btnk_bw = 130 + i * 20
             btnk_bw = 60 + i * 30
             cross_bw_ratio = cross_bw / btnk_bw
-            # link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
+            link_str_info = {'bw': [[f'N({btnk_bw:.1f} 2)'], [''] * 4]}
+            
             link_str_info = {'bw': [[''], [f'N({btnk_bw:.1f} 2)'] * 4]}
 
             # generate
@@ -780,10 +789,47 @@ class ConfigGenerator:
             max_leaf = [2, 3]
             # n_flow is the common multiple of (4,8,12,16) to avoid clean division
             # for n_flow in [48, 96, 144, 192, 240]:
-            for n_flow in [50, 100, 200, 400, 800]:
+            # for n_flow in [50, 100, 200, 400, 800]:
+            # for n_flow in [100, 200, 300, 400, 500]:
+            for n_flow in [25, 50]:
                 user_per_btnk = int(n_flow / n_right_btnk)
-                avg_rate = 2.6
-                cross_bw_ratio = 0.3
+                avg_rate = 5
+                # cross_bw_ratio = 0.3
+                cross_bw_ratio = 0.9
+                rate_str = f'N({avg_rate} 0.5)'         # only needed for 25/50 cases
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.8
+                link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
+                                        [f'N({btnk_bw} 2)'] * n_right_btnk]}
+                qsize_str = f'N({qsize_for_one / n_right_btnk:.1f} 5)'
+
+                self.init_group(n_left_btnk, n_right_btnk, n_run, sim_start, sim_end)
+                self.generate_link(link_str_info=link_str_info, max_leaf=max_leaf,
+                                   qsize_str=qsize_str)
+                self.generate_flow(user_per_btnk=user_per_btnk, set_right_btnk=True,
+                                   deterministic_user_num=True, rate_str=rate_str)
+                self.generate_cross(cross_bw_ratio=0.01,
+                                    cross_bw_ratio2=cross_bw_ratio)
+
+    @record_output
+    def generate_large_2d_scan(self, n_run=2, sim_start=0.0, sim_end=60.0):
+        """Generate 2D scan testset, i.e. scan n_para_btnk (right here) and n_flow.
+        In this scenario, we maintain the following invariants:
+            1) congested user rate per flow;
+            2) user traffic ratio per link;
+        And divide the queue size in proportion to the number of bottlenecks.
+        Our key idea is to make sure that links are similar w/ different parallel
+        bottlenecks, i.e. if ratio is 2, the 2 smaller links should be able to to
+        merge into a link that is equivalent to the larger link.
+        """
+        left_btnk_groups, right_btnk_groups = [1] * 4, [4, 8, 12, 16]
+        btnk_grp = zip(left_btnk_groups, right_btnk_groups)
+        qsize_for_one = 4000
+        for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
+            max_leaf = [2, 3]
+            for n_flow in [1000]:
+                user_per_btnk = int(n_flow / n_right_btnk)
+                avg_rate = 5
+                cross_bw_ratio = 0.2
                 btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.8
                 link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
                                         [f'N({btnk_bw} 2)'] * n_right_btnk]}
@@ -796,6 +842,7 @@ class ConfigGenerator:
                                    deterministic_user_num=True)
                 self.generate_cross(cross_bw_ratio=0.01,
                                     cross_bw_ratio2=cross_bw_ratio)
+
 
     @record_output
     def generate_large_flow_num(self, n_run=4, sim_start=0.0, sim_end=60.0):
@@ -1059,6 +1106,7 @@ if __name__ == '__main__':
                         'load-scan-bkup', 'large-flow-bkup',
                         'para-btnk-bkup',
                         'left-small', 'right-small', 'left-large', 'right-large',
+                        'large-2d'
                         ],
                         help='Profile for the config generation')
     parser.add_argument('--note', '-nt', type=str, default='',
@@ -1135,3 +1183,5 @@ if __name__ == '__main__':
         cgen.generate_3d_scan(args.n_run, args.start, args.end)
     elif args.profile == '2d':
         cgen.generate_2d_scan(args.n_run, args.start, args.end)
+    elif args.profile == 'large-2d':
+        cgen.generate_large_2d_scan(args.n_run, args.start, args.end)
