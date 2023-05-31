@@ -823,15 +823,15 @@ class ConfigGenerator:
         """
         left_btnk_groups, right_btnk_groups = [1] * 4, [4, 8, 12, 16]
         btnk_grp = zip(left_btnk_groups, right_btnk_groups)
-        qsize_for_one = 4000
+        qsize_for_one = 3000
         for i, (n_left_btnk, n_right_btnk) in enumerate(btnk_grp):
             max_leaf = [2, 3]
             for n_flow in [1000]:
                 user_per_btnk = int(n_flow / n_right_btnk)
-                avg_rate = 5
+                avg_rate = 2.6
                 cross_bw_ratio = 0.2
-                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.8
-                link_str_info = {'bw': [['N(2000 5)'] * n_left_btnk,
+                btnk_bw = user_per_btnk * avg_rate / (1 - cross_bw_ratio) * 0.7
+                link_str_info = {'bw': [['N(3000 5)'] * n_left_btnk,
                                         [f'N({btnk_bw} 2)'] * n_right_btnk]}
                 qsize_str = f'N({qsize_for_one / n_right_btnk:.1f} 5)'
 
