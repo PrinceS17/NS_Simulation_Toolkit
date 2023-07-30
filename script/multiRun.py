@@ -469,6 +469,7 @@ class MultiRun_Module:
 
                 fdir = os.path.join(self.res_path, 'dats')
                 os.system(f'cp {csv} {fdir}')
+                os.system(f'mv {csv} {csv}.bk')     # avoid mid collision in later runs
 
         # use cfg_out_path now, no need to mv
         # os.system(f'mv {self.tmps} {self.res_path}')
